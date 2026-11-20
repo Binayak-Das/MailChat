@@ -58,6 +58,11 @@ function App() {
     }
   };
 
+  const handleUserUpdate = (updatedUser) => {
+    localStorage.setItem('mailchat_user', JSON.stringify(updatedUser));
+    setCurrentUser(updatedUser);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('mailchat_token');
     localStorage.removeItem('mailchat_user');
@@ -67,7 +72,6 @@ function App() {
 
   return (
     <Routes>
-
       <Route
         path="/"
         element={
@@ -93,7 +97,7 @@ function App() {
           ) : !currentUser || currentUser.role !== 'admin' ? (
             <Navigate to="/" replace />
           ) : (
-            <AdminDashboard user={currentUser} onLogout={handleLogout} />
+            <AdminDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
           )
         }
       />
@@ -107,7 +111,7 @@ function App() {
           ) : !currentUser || currentUser.role !== 'admin' ? (
             <Navigate to="/" replace />
           ) : (
-            <AdminDashboard user={currentUser} onLogout={handleLogout} />
+            <AdminDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
           )
         }
       />
@@ -126,7 +130,7 @@ function App() {
           ) : !currentUser ? (
             <Navigate to="/" replace />
           ) : (
-            <UserDashboard user={currentUser} onLogout={handleLogout} />
+            <UserDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
           )
         }
       />
@@ -135,7 +139,16 @@ function App() {
       <Route path="/chats" element={<Navigate to="/dashboard/chats" replace />} />
       <Route path="/chat" element={<Navigate to="/dashboard/chats" replace />} />
       <Route path="/notifications" element={<Navigate to="/dashboard/notifications" replace />} />
-      <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+      <Route
+        path="/settings"
+        element={
+          currentUser?.role === 'admin' ? (
+            <Navigate to="/admin/settings" replace />
+          ) : (
+            <Navigate to="/dashboard/settings" replace />
+          )
+        }
+      />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -1,6 +1,8 @@
 import Chat from '../models/Chat.js';
 import User from '../models/User.js';
 import Message from '../models/Message.js';
+import Notification from '../models/Notification.js';
+import { createNotificationAndEmit } from '../utils/notificationHelper.js';
 
 export const accessChat = async (req, res) => {
   try {
@@ -128,11 +130,11 @@ export const getChatUsers = async (req, res) => {
   try {
     const searchFilter = req.query.search
       ? {
-          $or: [
-            { name: { $regex: req.query.search, $options: 'i' } },
-            { email: { $regex: req.query.search, $options: 'i' } }
-          ]
-        }
+        $or: [
+          { name: { $regex: req.query.search, $options: 'i' } },
+          { email: { $regex: req.query.search, $options: 'i' } }
+        ]
+      }
       : {};
 
     const users = await User.find({
@@ -140,7 +142,7 @@ export const getChatUsers = async (req, res) => {
       _id: { $ne: req.user._id },
       role: { $in: ['user', 'admin'] }
     })
-      .select('name email avatar role createdAt')
+      .select('name email avatar role status createdAt')
       .sort({ name: 1 });
 
     return res.status(200).json({
@@ -198,14 +200,38 @@ export const createGroupChat = async (req, res) => {
       .populate('groupAdmin', '-password');
 
     const io = req.app.get('io');
-    if (io) {
-      fullGroupChat.users.forEach((u) => {
-        const uid = (u._id || u.id || u)?.toString();
-        if (uid) {
+    const chatIdStr = fullGroupChat._id.toString();
+    for (const u of fullGroupChat.users) {
+      const uid = (u._id || u.id || u)?.toString();
+      if (uid) {
+        if (io) {
+          io.in(uid).socketsJoin(chatIdStr);
           io.to(uid).emit('new_chat', fullGroupChat);
           io.to(uid).emit('chat_updated', fullGroupChat);
+          io.to(uid).emit('chat_activity', {
+            chatId: chatIdStr,
+            chat: fullGroupChat,
+            message: null
+          });
+          if (uid !== req.user._id.toString()) {
+            io.to(uid).emit('group_activity', {
+              type: 'created',
+              chat: fullGroupChat,
+              title: 'Added to Group',
+              message: `${req.user.name} added you to "${fullGroupChat.chatName}".`
+            });
+          }
         }
-      });
+        if (uid !== req.user._id.toString()) {
+          await createNotificationAndEmit(io, {
+            userId: uid,
+            title: 'Added to New Group',
+            message: `${req.user.name} added you to group "${fullGroupChat.chatName}".`,
+            type: 'group',
+            relatedChat: fullGroupChat._id
+          });
+        }
+      }
     }
 
     return res.status(201).json({
@@ -249,6 +275,17 @@ export const renameGroup = async (req, res) => {
       });
     }
 
+    const isAdmin =
+      (chat.groupAdmin && chat.groupAdmin.toString() === req.user._id.toString()) ||
+      req.user.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group admin can rename the group'
+      });
+    }
+
+    const oldName = chat.chatName;
     chat.chatName = chatName.trim();
     await chat.save();
 
@@ -262,6 +299,33 @@ export const renameGroup = async (req, res) => {
           select: 'name email avatar role'
         }
       });
+
+    const io = req.app.get('io');
+    for (const u of updatedChat.users) {
+      const uid = (u._id || u.id || u)?.toString();
+      if (uid) {
+        if (io) {
+          io.to(uid).emit('chat_updated', updatedChat);
+          if (uid !== req.user._id.toString()) {
+            io.to(uid).emit('group_activity', {
+              type: 'renamed',
+              chat: updatedChat,
+              title: 'Group Renamed',
+              message: `${req.user.name} renamed "${oldName}" to "${updatedChat.chatName}".`
+            });
+          }
+        }
+        if (uid !== req.user._id.toString()) {
+          await createNotificationAndEmit(io, {
+            userId: uid,
+            title: 'Group Renamed',
+            message: `${req.user.name} renamed "${oldName}" to "${updatedChat.chatName}".`,
+            type: 'group',
+            relatedChat: updatedChat._id
+          });
+        }
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -327,6 +391,35 @@ export const addToGroup = async (req, res) => {
           select: 'name email avatar role'
         }
       });
+
+    const addedUser = await User.findById(userId);
+    const io = req.app.get('io');
+    for (const u of updatedChat.users) {
+      const uid = (u._id || u.id || u)?.toString();
+      if (uid) {
+        if (io) {
+          io.to(uid).emit('chat_updated', updatedChat);
+          io.to(uid).emit('new_chat', updatedChat);
+          if (uid === userId.toString()) {
+            io.to(uid).emit('group_activity', {
+              type: 'added',
+              chat: updatedChat,
+              title: 'Added to Group',
+              message: `${req.user.name} added you to "${updatedChat.chatName}".`
+            });
+          }
+        }
+        if (uid === userId.toString()) {
+          await createNotificationAndEmit(io, {
+            userId: uid,
+            title: 'Added to Group',
+            message: `${req.user.name} added you to group "${updatedChat.chatName}".`,
+            type: 'group',
+            relatedChat: updatedChat._id
+          });
+        }
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -396,6 +489,23 @@ export const removeFromGroup = async (req, res) => {
           select: 'name email avatar role'
         }
       });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(userId.toString()).emit('removed_from_group', { chatId });
+      io.to(userId.toString()).emit('group_activity', {
+        type: 'removed',
+        chatId,
+        title: 'Removed from Group',
+        message: `You were removed from "${chat.chatName}".`
+      });
+      updatedChat.users.forEach((u) => {
+        const uid = (u._id || u.id || u)?.toString();
+        if (uid) {
+          io.to(uid).emit('chat_updated', updatedChat);
+        }
+      });
+    }
 
     return res.status(200).json({
       success: true,

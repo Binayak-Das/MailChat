@@ -3,6 +3,7 @@ import {
   register,
   login,
   getMe,
+  updateProfile,
   getAllUsers,
   updateUserRole,
   forgotPassword,
@@ -20,6 +21,7 @@ router.post('/verify-otp', verifyOtp);
 router.post('/reset-password', resetPassword);
 
 router.get('/me', protect, getMe);
+router.put('/profile', protect, updateProfile);
 
 router.get('/users', protect, authorizeAdmin, getAllUsers);
 router.put('/users/:userId/role', protect, authorizeAdmin, updateUserRole);

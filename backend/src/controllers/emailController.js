@@ -1,6 +1,7 @@
 import Email from '../models/Email.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
+import { createNotificationAndEmit } from '../utils/notificationHelper.js';
 
 const formatEmailTime = (dateObj) => {
   const d = new Date(dateObj);
@@ -128,8 +129,10 @@ export const sendEmail = async (req, res) => {
       await newEmail.save();
     }
 
-    await Notification.create({
-      user: recipientUser._id,
+    const io = req.app.get('io');
+
+    await createNotificationAndEmit(io, {
+      userId: recipientUser._id,
       title: `New Email from ${req.user.name}`,
       message: `${req.user.name} sent you an email: "${subject.trim()}"`,
       type: 'email',
@@ -137,9 +140,21 @@ export const sendEmail = async (req, res) => {
       unread: true
     });
 
+    if (io) {
+      io.to(recipientUser._id.toString()).emit('new_email', {
+        id: newEmail._id,
+        threadId: newEmail.threadId,
+        sender: newEmail.senderName,
+        senderEmail: newEmail.senderEmail,
+        subject: newEmail.subject,
+        snippet: newEmail.snippet,
+        createdAt: newEmail.createdAt
+      });
+    }
+
     if (!isSelfSend) {
-      await Notification.create({
-        user: req.user._id,
+      await createNotificationAndEmit(io, {
+        userId: req.user._id,
         title: 'Email Sent Successfully',
         message: `Message "${subject.trim()}" was successfully delivered to ${recipientUser.name} (${recipientUser.email}).`,
         type: 'email',

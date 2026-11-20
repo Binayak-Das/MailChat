@@ -44,6 +44,12 @@ const messageSchema = new mongoose.Schema(
         ref: 'User'
       }
     ],
+    deliveredTo: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
     reactions: [
       {
         user: {
@@ -55,7 +61,29 @@ const messageSchema = new mongoose.Schema(
           trim: true
         }
       }
-    ]
+    ],
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Message'
+    },
+    isEdited: {
+      type: Boolean,
+      default: false
+    },
+    editedAt: {
+      type: Date
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false
+    },
+    deletedAt: {
+      type: Date
+    },
+    isForwarded: {
+      type: Boolean,
+      default: false
+    }
   },
   {
     timestamps: true

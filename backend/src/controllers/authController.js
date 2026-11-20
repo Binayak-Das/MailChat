@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Otp from '../models/Otp.js';
 import { sendPasswordResetOtpEmail } from '../utils/emailService.js';
+import { createNotificationAndEmit } from '../utils/notificationHelper.js';
 
 const generateToken = (userId) => {
   return jwt.sign(
@@ -46,16 +47,19 @@ export const register = async (req, res) => {
       name: name.trim(),
       email: cleanEmail,
       password,
-      role: 'pending'
+      role: 'pending',
+      status: 'active'
     });
 
     const io = req.app.get('io');
     if (io) {
       io.emit('user_registered', {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status,
         avatar: user.avatar,
         createdAt: user.createdAt
       });
@@ -65,9 +69,11 @@ export const register = async (req, res) => {
       success: true,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status,
         avatar: user.avatar,
         createdAt: user.createdAt
       }
@@ -101,6 +107,13 @@ export const login = async (req, res) => {
       });
     }
 
+    if (user.status === 'banned') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been suspended by an administrator. Please contact support.'
+      });
+    }
+
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
@@ -117,10 +130,14 @@ export const login = async (req, res) => {
       token,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status || 'active',
         avatar: user.avatar,
+        contacts: user.contacts || [],
+        blockedUsers: user.blockedUsers || [],
         createdAt: user.createdAt
       }
     });
@@ -135,14 +152,24 @@ export const login = async (req, res) => {
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User account not found'
+      });
+    }
     return res.status(200).json({
       success: true,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status || 'active',
         avatar: user.avatar,
+        contacts: user.contacts || [],
+        blockedUsers: user.blockedUsers || [],
         createdAt: user.createdAt
       }
     });
@@ -150,6 +177,77 @@ export const getMe = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve user profile'
+    });
+  }
+};
+
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, avatar } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name cannot be empty'
+      });
+    }
+
+    if (name.trim().length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name cannot exceed 50 characters'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User account not found'
+      });
+    }
+
+    user.name = name.trim();
+    if (avatar !== undefined) {
+      user.avatar = avatar;
+    }
+
+    await user.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user_updated', {
+        id: user._id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status || 'active',
+        avatar: user.avatar,
+        createdAt: user.createdAt
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status || 'active',
+        avatar: user.avatar,
+        contacts: user.contacts || [],
+        blockedUsers: user.blockedUsers || [],
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Error updating profile'
     });
   }
 };
@@ -195,20 +293,30 @@ export const updateUserRole = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
+      await createNotificationAndEmit(io, {
+        userId: user._id,
+        title: 'Role Permissions Updated',
+        message: `Your account role was changed to "${role}". Your workspace access has been updated.`,
+        type: 'role'
+      });
       io.emit('user_updated', {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status || 'active',
         avatar: user.avatar,
         createdAt: user.createdAt
       });
       if (role === 'user' || role === 'admin') {
         io.emit('new_user', {
           id: user._id,
+          _id: user._id,
           name: user.name,
           email: user.email,
           role: user.role,
+          status: user.status || 'active',
           avatar: user.avatar,
           createdAt: user.createdAt
         });
@@ -219,9 +327,11 @@ export const updateUserRole = async (req, res) => {
       success: true,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status || 'active',
         avatar: user.avatar,
         createdAt: user.createdAt
       }
@@ -246,7 +356,6 @@ export const forgotPassword = async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-
     const user = await User.findOne({ email: cleanEmail });
     if (!user) {
       return res.status(404).json({
@@ -256,7 +365,6 @@ export const forgotPassword = async (req, res) => {
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();
-
     const salt = await bcrypt.genSalt(10);
     const hashedOtp = await bcrypt.hash(otp, salt);
 

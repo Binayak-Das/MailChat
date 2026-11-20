@@ -88,12 +88,11 @@ export default function MailModule({ user = {}, showToast = () => {}, onUnreadCo
   const [emailsLoading, setEmailsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const [mailFolder, setMailFolder] = useState('inbox'); // 'inbox' | 'starred' | 'sent' | 'trash'
+  const [mailFolder, setMailFolder] = useState('inbox');
   const [emailSearch, setEmailSearch] = useState('');
   const [selectedEmailIds, setSelectedEmailIds] = useState([]);
   const [selectedEmail, setSelectedEmail] = useState(null);
 
-  // Compose State
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeData, setComposeData] = useState({ to: '', subject: '', body: '', category: 'Work' });
   const [attachments, setAttachments] = useState([]);
@@ -105,7 +104,6 @@ export default function MailModule({ user = {}, showToast = () => {}, onUnreadCo
   const [recipientValid, setRecipientValid] = useState(null);
   const [previewMedia, setPreviewMedia] = useState(null);
 
-  // Thread & Quick Reply State
   const [quickReplyText, setQuickReplyText] = useState('');
   const [threadMessages, setThreadMessages] = useState([]);
   const [threadLoading, setThreadLoading] = useState(false);
@@ -123,7 +121,6 @@ export default function MailModule({ user = {}, showToast = () => {}, onUnreadCo
   const replyTextareaRef = useRef(null);
   const replyEmojiPickerRef = useRef(null);
 
-  // Close emoji popovers on outside click
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) {
@@ -139,7 +136,6 @@ export default function MailModule({ user = {}, showToast = () => {}, onUnreadCo
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [emojiPickerOpen, replyEmojiOpen]);
 
-  // Fetch Emails
   const fetchEmailsData = async (showSpinner = false) => {
     if (!token) return;
     if (showSpinner) setIsRefreshing(true);
@@ -174,17 +170,14 @@ export default function MailModule({ user = {}, showToast = () => {}, onUnreadCo
     });
   }, [user.email, token]);
 
-  // Counts
   const inboxEmails = emails.filter((e) => e.folder === 'inbox');
   const unreadEmailCount = inboxEmails.filter((e) => e.unread).length;
   const starredEmailCount = emails.filter((e) => e.starred).length;
 
-  // Sync unread count to parent component
   useEffect(() => {
     onUnreadCountChange?.(unreadEmailCount);
   }, [unreadEmailCount, onUnreadCountChange]);
 
-  // Filtered displayed emails
   const displayedEmails = emails.filter((e) => {
     if (mailFolder === 'starred') {
       if (!e.starred) return false;
@@ -602,7 +595,7 @@ ${emailToForward.body || ''}`;
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const maxFileSize = 10 * 1024 * 1024; // 10MB
+    const maxFileSize = 10 * 1024 * 1024;
 
     files.forEach((file) => {
       if (file.size > maxFileSize) {
@@ -781,7 +774,7 @@ ${emailToForward.body || ''}`;
 
   return (
     <div className="flex-1 h-full min-h-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-      {/* Top Action & Folder Bar */}
+      
       <div className="p-2.5 sm:p-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 bg-slate-50/70 dark:bg-slate-950/60 shrink-0">
         <div className="flex items-center gap-2 max-w-full overflow-x-auto scrollbar-none pb-0.5 md:pb-0">
           <button
@@ -877,9 +870,9 @@ ${emailToForward.body || ''}`;
         </div>
       </div>
 
-      {/* Main Mail Container */}
+      
       <div className="flex-1 flex overflow-hidden">
-        {/* Email List Column */}
+        
         <div className={`flex flex-col h-full bg-white dark:bg-slate-900 ${selectedEmail ? 'hidden' : 'w-full flex'}`}>
           <div className="px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 bg-slate-50/70 dark:bg-slate-950/40">
             <div className="flex items-center gap-2.5 sm:gap-3">
@@ -1135,11 +1128,11 @@ ${emailToForward.body || ''}`;
           </div>
         </div>
 
-        {/* Selected Email Thread Column */}
+        
         {selectedEmail && (
           <div className="flex-1 flex flex-col h-full bg-white dark:bg-slate-900 overflow-hidden">
             <div className="flex-1 flex flex-col h-full overflow-hidden">
-              {/* Header */}
+              
               <div className="p-3 sm:p-5 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50/60 dark:bg-slate-950/40">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
                   <div className="flex items-center gap-2 min-w-0 overflow-x-auto scrollbar-none pb-0.5 sm:pb-0">
@@ -1254,7 +1247,7 @@ ${emailToForward.body || ''}`;
                 </h2>
               </div>
 
-              {/* Thread Messages */}
+              
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-4">
                 {threadMessages.map((msg, idx) => {
                   const isMe = msg.senderEmail?.toLowerCase() === (user.email || '').toLowerCase().trim();
@@ -1448,7 +1441,7 @@ ${emailToForward.body || ''}`;
                   );
                 })}
 
-                {/* Quick Reply Box */}
+                
                 {(() => {
                   const otherParty = getOtherParty(selectedEmail);
                   return (
@@ -1627,7 +1620,7 @@ ${emailToForward.body || ''}`;
         )}
       </div>
 
-      {/* Compose Email Modal */}
+      
       {composeOpen && (
         <div className="fixed inset-x-3 bottom-3 sm:inset-x-auto sm:right-6 sm:bottom-6 z-50 sm:w-140 max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-5">
           <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between shrink-0 select-none">
@@ -1850,7 +1843,7 @@ ${emailToForward.body || ''}`;
         </div>
       )}
 
-      {/* Media Lightbox */}
+      
       {previewMedia && (
         <div
           onClick={() => setPreviewMedia(null)}

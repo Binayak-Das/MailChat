@@ -31,10 +31,27 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin', 'pending'],
       default: 'pending'
     },
+    status: {
+      type: String,
+      enum: ['active', 'banned', 'suspended'],
+      default: 'active'
+    },
     avatar: {
       type: String,
       default: ''
-    }
+    },
+    contacts: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
+    blockedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ]
   },
   {
     timestamps: true

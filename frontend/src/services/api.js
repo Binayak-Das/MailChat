@@ -47,6 +47,23 @@ export async function getCurrentUser(token) {
   return data;
 }
 
+export async function updateProfile(token, { name, avatar }) {
+  const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ name, avatar })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update profile');
+  }
+  return data;
+}
+
 export async function getAllUsers(token) {
   const response = await fetch(`${API_BASE_URL}/auth/users`, {
     method: 'GET',
@@ -298,7 +315,6 @@ export async function markNotificationsAsRead(token) {
   return data;
 }
 
-// Chat API Endpoints
 export async function fetchChats(token) {
   const response = await fetch(`${API_BASE_URL}/chat`, {
     method: 'GET',
@@ -415,7 +431,6 @@ export async function removeMemberFromGroup(token, { chatId, userId }) {
   return data;
 }
 
-// Message API Endpoints
 export async function fetchMessages(token, chatId) {
   const response = await fetch(`${API_BASE_URL}/messages/${chatId}`, {
     method: 'GET',
@@ -431,19 +446,102 @@ export async function fetchMessages(token, chatId) {
   return data;
 }
 
-export async function sendMessage(token, { chatId, content, attachments = [] }) {
+export async function sendMessage(token, { chatId, content, attachments = [], replyTo = null }) {
   const response = await fetch(`${API_BASE_URL}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     },
-    body: JSON.stringify({ chatId, content, attachments })
+    body: JSON.stringify({ chatId, content, attachments, replyTo })
   });
 
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.message || 'Failed to send message');
+  }
+  return data;
+}
+
+export async function editMessage(token, messageId, content) {
+  const response = await fetch(`${API_BASE_URL}/messages/${messageId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ content })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to edit message');
+  }
+  return data;
+}
+
+export async function deleteMessage(token, messageId) {
+  const response = await fetch(`${API_BASE_URL}/messages/${messageId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to delete message');
+  }
+  return data;
+}
+
+export async function forwardMessage(token, messageId, targetChatIds) {
+  const response = await fetch(`${API_BASE_URL}/messages/forward`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ messageId, targetChatIds })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to forward message');
+  }
+  return data;
+}
+
+export async function markMessagesRead(token, chatId) {
+  const response = await fetch(`${API_BASE_URL}/messages/read`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ chatId })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to mark messages as read');
+  }
+  return data;
+}
+
+export async function markMessagesDelivered(token, messageIds) {
+  const response = await fetch(`${API_BASE_URL}/messages/delivered`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ messageIds })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to mark messages as delivered');
   }
   return data;
 }
@@ -465,3 +563,211 @@ export async function toggleMessageReaction(token, messageId, emoji) {
   return data;
 }
 
+export async function getContacts(token) {
+  const response = await fetch(`${API_BASE_URL}/contacts`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch contacts');
+  }
+  return data;
+}
+
+export async function addContact(token, userId) {
+  const response = await fetch(`${API_BASE_URL}/contacts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ userId })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to add contact');
+  }
+  return data;
+}
+
+export async function removeContact(token, userId) {
+  const response = await fetch(`${API_BASE_URL}/contacts/${userId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to remove contact');
+  }
+  return data;
+}
+
+export async function searchContacts(token, query = '') {
+  const q = query ? `?query=${encodeURIComponent(query)}` : '';
+  const response = await fetch(`${API_BASE_URL}/contacts/search${q}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to search contacts');
+  }
+  return data;
+}
+
+export async function getBlockedUsers(token) {
+  const response = await fetch(`${API_BASE_URL}/contacts/blocked`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch blocked users');
+  }
+  return data;
+}
+
+export async function blockUser(token, userId) {
+  const response = await fetch(`${API_BASE_URL}/contacts/block`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ userId })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to block user');
+  }
+  return data;
+}
+
+export async function unblockUser(token, userId) {
+  const response = await fetch(`${API_BASE_URL}/contacts/unblock`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ userId })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to unblock user');
+  }
+  return data;
+}
+
+export async function createReport(token, { reportedUserId, reason, details }) {
+  const response = await fetch(`${API_BASE_URL}/reports`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ reportedUserId, reason, details })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to submit report');
+  }
+  return data;
+}
+
+export async function getAllReports(token, status = 'all') {
+  const q = status !== 'all' ? `?status=${encodeURIComponent(status)}` : '';
+  const response = await fetch(`${API_BASE_URL}/reports${q}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch reports');
+  }
+  return data;
+}
+
+export async function updateReport(token, reportId, data) {
+  const response = await fetch(`${API_BASE_URL}/reports/${reportId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(data)
+  });
+
+  const resData = await response.json();
+  if (!response.ok) {
+    throw new Error(resData.message || 'Failed to update report');
+  }
+  return resData;
+}
+
+export async function getPlatformActivity(token) {
+  const response = await fetch(`${API_BASE_URL}/admin/activity`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch platform activity');
+  }
+  return data;
+}
+
+export async function adminDeleteUser(token, userId) {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to delete user');
+  }
+  return data;
+}
+
+export async function adminToggleBan(token, userId, status) {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/status`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ status })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update user status');
+  }
+  return data;
+}

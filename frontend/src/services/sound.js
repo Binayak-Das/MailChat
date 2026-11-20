@@ -1,11 +1,9 @@
 let lastSoundPlayedAt = 0;
 
-// Authentic WhatsApp incoming message notification tone generator
 export const playWhatsAppNotificationSound = () => {
   const audioEnabled = localStorage.getItem('mailchat_pref_audio_alerts') !== 'false';
   if (!audioEnabled) return;
 
-  // Debounce rapid duplicate triggers within 250ms
   const nowMs = Date.now();
   if (nowMs - lastSoundPlayedAt < 250) return;
   lastSoundPlayedAt = nowMs;
@@ -46,10 +44,7 @@ export const playWhatsAppNotificationSound = () => {
 
     const triggerTone = () => {
       const now = ctx.currentTime;
-      // WhatsApp iconic 2-note marimba chime:
-      // First strike: G5 (784 Hz)
       playMarimbaPulse(784, now, 0.08, 0.28);
-      // Second strike: C6 (1046.5 Hz)
       playMarimbaPulse(1046.5, now + 0.075, 0.24, 0.35);
 
       setTimeout(() => {

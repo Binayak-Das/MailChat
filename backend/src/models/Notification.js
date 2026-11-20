@@ -19,12 +19,16 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['email', 'security', 'system', 'role'],
+      enum: ['email', 'security', 'system', 'role', 'chat', 'group', 'report'],
       default: 'email'
     },
     relatedEmail: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Email'
+    },
+    relatedChat: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Chat'
     },
     unread: {
       type: Boolean,
