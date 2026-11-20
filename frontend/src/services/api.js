@@ -297,3 +297,171 @@ export async function markNotificationsAsRead(token) {
   }
   return data;
 }
+
+// Chat API Endpoints
+export async function fetchChats(token) {
+  const response = await fetch(`${API_BASE_URL}/chat`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch conversations');
+  }
+  return data;
+}
+
+export async function accessOrCreateChat(token, userId) {
+  const response = await fetch(`${API_BASE_URL}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ userId })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to access chat');
+  }
+  return data;
+}
+
+export async function getChatUsers(token, search = '') {
+  const query = search ? `?search=${encodeURIComponent(search)}` : '';
+  const response = await fetch(`${API_BASE_URL}/chat/users${query}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch contacts');
+  }
+  return data;
+}
+
+export async function createGroupChat(token, { name, users, description }) {
+  const response = await fetch(`${API_BASE_URL}/chat/group`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ name, users, description })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to create group');
+  }
+  return data;
+}
+
+export async function renameGroupChat(token, { chatId, chatName }) {
+  const response = await fetch(`${API_BASE_URL}/chat/group/rename`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ chatId, chatName })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to rename group');
+  }
+  return data;
+}
+
+export async function addMemberToGroup(token, { chatId, userId }) {
+  const response = await fetch(`${API_BASE_URL}/chat/group/add`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ chatId, userId })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to add member to group');
+  }
+  return data;
+}
+
+export async function removeMemberFromGroup(token, { chatId, userId }) {
+  const response = await fetch(`${API_BASE_URL}/chat/group/remove`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ chatId, userId })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to remove member from group');
+  }
+  return data;
+}
+
+// Message API Endpoints
+export async function fetchMessages(token, chatId) {
+  const response = await fetch(`${API_BASE_URL}/messages/${chatId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch messages');
+  }
+  return data;
+}
+
+export async function sendMessage(token, { chatId, content, attachments = [] }) {
+  const response = await fetch(`${API_BASE_URL}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ chatId, content, attachments })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to send message');
+  }
+  return data;
+}
+
+export async function toggleMessageReaction(token, messageId, emoji) {
+  const response = await fetch(`${API_BASE_URL}/messages/${messageId}/reaction`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ emoji })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update reaction');
+  }
+  return data;
+}
+

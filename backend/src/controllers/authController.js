@@ -49,6 +49,18 @@ export const register = async (req, res) => {
       role: 'pending'
     });
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user_registered', {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        createdAt: user.createdAt
+      });
+    }
+
     return res.status(201).json({
       success: true,
       user: {
@@ -180,6 +192,28 @@ export const updateUserRole = async (req, res) => {
 
     user.role = role;
     await user.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user_updated', {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        createdAt: user.createdAt
+      });
+      if (role === 'user' || role === 'admin') {
+        io.emit('new_user', {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatar: user.avatar,
+          createdAt: user.createdAt
+        });
+      }
+    }
 
     return res.status(200).json({
       success: true,

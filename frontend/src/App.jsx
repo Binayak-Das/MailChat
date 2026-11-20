@@ -97,6 +97,20 @@ function App() {
           )
         }
       />
+      <Route
+        path="/admin/:module/:submodule"
+        element={
+          loading ? (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            </div>
+          ) : !currentUser || currentUser.role !== 'admin' ? (
+            <Navigate to="/" replace />
+          ) : (
+            <AdminDashboard user={currentUser} onLogout={handleLogout} />
+          )
+        }
+      />
 
       <Route
         path="/dashboard"
