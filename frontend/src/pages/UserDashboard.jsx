@@ -27,13 +27,18 @@ import {
   Volume2,
   BellRing,
   Info,
-  BellOff
+  BellOff,
+  KeyRound
 } from 'lucide-react';
 import {
   getNotifications,
   markNotificationsAsRead,
   updateProfile,
-  fetchChats
+  fetchChats,
+  send2faSetupOtp,
+  enable2fa,
+  disable2fa,
+  getPresenceStatus
 } from '../services/api';
 import ChatModule from '../components/chat/ChatModule';
 import MailModule from '../components/mail/MailModule';
@@ -127,6 +132,94 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
       showToast(next ? 'Desktop audio alerts enabled' : 'Desktop audio alerts muted');
       return next;
     });
+  };
+
+  // 2FA Management State
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
+  const [show2faSetupModal, setShow2faSetupModal] = useState(false);
+  const [twoFactorSetupOtp, setTwoFactorSetupOtp] = useState('');
+  const [twoFactorStep, setTwoFactorStep] = useState(1);
+  const [twoFactorCooldown, setTwoFactorCooldown] = useState(0);
+  const [show2faDisableModal, setShow2faDisableModal] = useState(false);
+
+  useEffect(() => {
+    let timer;
+    if (twoFactorCooldown > 0) {
+      timer = setTimeout(() => setTwoFactorCooldown(twoFactorCooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [twoFactorCooldown]);
+
+  const handleStart2faSetup = async () => {
+    const token = localStorage.getItem('mailchat_token');
+    if (!token) return;
+    setTwoFactorLoading(true);
+    try {
+      const res = await send2faSetupOtp(token);
+      showToast(res.message || 'Verification code sent to your email', 'success');
+      setTwoFactorStep(2);
+      setTwoFactorCooldown(60);
+      setTwoFactorSetupOtp('');
+    } catch (err) {
+      showToast(err.message || 'Failed to send 2FA verification code', 'error');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleConfirmEnable2fa = async (e) => {
+    if (e) e.preventDefault();
+    if (!twoFactorSetupOtp || twoFactorSetupOtp.trim().length < 6) {
+      showToast('Please enter the full 6-digit verification code', 'error');
+      return;
+    }
+    const token = localStorage.getItem('mailchat_token');
+    if (!token) return;
+
+    setTwoFactorLoading(true);
+    try {
+      const res = await enable2fa(token, { otp: twoFactorSetupOtp.trim() });
+      if (res.user) {
+        if (onUserUpdate) onUserUpdate(res.user);
+      }
+      showToast('Two-Factor Authentication is now ENABLED!', 'success');
+      setShow2faSetupModal(false);
+      setTwoFactorStep(1);
+      setTwoFactorSetupOtp('');
+    } catch (err) {
+      showToast(err.message || 'Invalid or expired verification code', 'error');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleConfirmDisable2fa = async () => {
+    const token = localStorage.getItem('mailchat_token');
+    if (!token) return;
+
+    setTwoFactorLoading(true);
+    try {
+      const res = await disable2fa(token);
+      if (res.user) {
+        if (onUserUpdate) onUserUpdate(res.user);
+      }
+      showToast('Two-Factor Authentication has been DISABLED', 'info');
+      setShow2faDisableModal(false);
+    } catch (err) {
+      showToast(err.message || 'Failed to disable 2FA', 'error');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleToggle2fa = () => {
+    if (user.twoFactorEnabled) {
+      setShow2faDisableModal(true);
+    } else {
+      setShow2faSetupModal(true);
+      setTwoFactorStep(1);
+      setTwoFactorSetupOtp('');
+    }
   };
 
   const handleSendTestNotification = async () => {
@@ -742,7 +835,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
           </div>
         </header>
 
-        <div className={`flex-1 min-h-0 relative z-10 flex flex-col ${activeTab === 'inbox' || activeTab === 'chats'
+        <div className={`flex-1 min-h-0 relative flex flex-col ${activeTab === 'inbox' || activeTab === 'chats'
             ? 'p-2 sm:p-5 lg:p-6 overflow-hidden'
             : 'p-3 sm:p-6 lg:p-8 overflow-y-auto'
           }`}>
@@ -886,22 +979,46 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
                 </form>
               </div>
 
-              <div className="p-5 sm:p-6 lg:p-7 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs w-full">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
-                  <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Push & Notification Preferences</h2>
-                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium mt-1">
-                      Configure browser push notifications, sound cues, and delivery alerts
-                    </p>
+              {/* TWO-FACTOR AUTHENTICATION (2FA) CARD */}
+              <div className="p-5 sm:p-6 lg:p-7 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs w-full flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    user.twoFactorEnabled
+                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}>
+                    <ShieldCheck className="w-5 h-5" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleSendTestNotification}
-                    className="px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-900/80 font-bold text-xs flex items-center gap-2 cursor-pointer self-start sm:self-auto transition-colors"
-                  >
-                    <BellRing className="w-4 h-4" />
-                    <span>Send Test Notification</span>
-                  </button>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                    2 Factor Authentication
+                  </h2>
+                </div>
+
+                {/* Toggle Switch */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(user.twoFactorEnabled)}
+                  onClick={handleToggle2fa}
+                  className={`relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    user.twoFactorEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                      user.twoFactorEnabled ? 'translate-x-6' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="p-5 sm:p-6 lg:p-7 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs w-full">
+                <div className="mb-2">
+                  <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Push & Notification Preferences</h2>
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium mt-1">
+                    Configure browser push notifications, sound cues, and delivery alerts
+                  </p>
                 </div>
 
                 <div className="mt-6 space-y-3.5 w-full">
@@ -1054,6 +1171,153 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2FA SETUP MODAL */}
+      {show2faSetupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
+            <button
+              type="button"
+              onClick={() => setShow2faSetupModal(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-600 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Enable Two-Factor Authentication</h3>
+                <p className="text-xs text-slate-500">Protect your MailChat account</p>
+              </div>
+            </div>
+
+            {twoFactorStep === 1 ? (
+              <div className="space-y-4 text-xs">
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                  A 6-digit confirmation code will be sent to your registered email address <strong className="text-slate-900 dark:text-white">{user.email}</strong> to verify you can receive authentication passcodes.
+                </p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShow2faSetupModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={twoFactorLoading}
+                    onClick={handleStart2faSetup}
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {twoFactorLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                    <span>Send Verification Code</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleConfirmEnable2fa} className="space-y-4 text-xs">
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Enter the 6-digit verification code sent to <strong className="text-slate-900 dark:text-white">{user.email}</strong>:
+                </p>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-slate-700 dark:text-slate-300 font-bold uppercase text-[11px]">
+                      Verification Code
+                    </label>
+                    <button
+                      type="button"
+                      disabled={twoFactorCooldown > 0 || twoFactorLoading}
+                      onClick={handleStart2faSetup}
+                      className="text-blue-600 dark:text-blue-400 hover:underline text-[11px] disabled:opacity-50 cursor-pointer"
+                    >
+                      {twoFactorCooldown > 0 ? `Resend in ${twoFactorCooldown}s` : 'Resend Code'}
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={twoFactorSetupOtp}
+                    onChange={(e) => setTwoFactorSetupOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder="------"
+                    className="w-full py-2.5 px-3 text-center tracking-[0.4em] font-mono text-xl font-bold rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShow2faSetupModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={twoFactorLoading || twoFactorSetupOtp.length < 6}
+                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    {twoFactorLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    <span>Verify & Turn ON 2FA</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 2FA DISABLE CONFIRMATION MODAL */}
+      {show2faDisableModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
+            <button
+              type="button"
+              onClick={() => setShow2faDisableModal(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Disable Two-Factor Authentication?</h3>
+                <p className="text-xs text-slate-500">Security Warning</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4">
+              Disabling 2FA makes your account significantly more vulnerable to unauthorized access. Sign-ins will only require your basic credentials without an email verification passcode.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShow2faDisableModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Keep 2FA Enabled
+              </button>
+              <button
+                type="button"
+                disabled={twoFactorLoading}
+                onClick={handleConfirmDisable2fa}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-xs"
+              >
+                {twoFactorLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+                <span>Yes, Turn OFF 2FA</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

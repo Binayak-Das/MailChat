@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MessageSquare,
   Users,
@@ -53,7 +54,8 @@ import {
   getBlockedUsers,
   blockUser,
   unblockUser,
-  createReport
+  createReport,
+  getPresenceStatus
 } from '../../services/api';
 import { getSocket, initSocket } from '../../services/socket';
 import { playWhatsAppNotificationSound } from '../../services/sound';
@@ -108,6 +110,55 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
+const formatLastSeen = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+
+  const now = new Date();
+
+  // Format time as 10:00am / 02:45pm
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  const hour12 = hours % 12 || 12;
+  const minutePad = minutes < 10 ? `0${minutes}` : minutes;
+  const timeStr = `${hour12}:${minutePad}${ampm}`;
+
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isToday) {
+    return `today at ${timeStr}`;
+  }
+  if (isYesterday) {
+    return `yesterday at ${timeStr}`;
+  }
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthStr = monthNames[date.getMonth()];
+  const day = date.getDate();
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${monthStr} ${day} at ${timeStr}`;
+  }
+  return `${monthStr} ${day}, ${date.getFullYear()} at ${timeStr}`;
+};
+
+const ModalPortal = ({ children }) => {
+  if (typeof document === 'undefined') return null;
+  return createPortal(children, document.body);
+};
+
 export default function ChatModule({ user, showToast, onUnreadCountChange }) {
   const token = localStorage.getItem('mailchat_token');
   const currentUserId = user?._id || user?.id;
@@ -159,6 +210,7 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
   const messageInputRef = useRef(null);
 
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [userStatuses, setUserStatuses] = useState({});
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
@@ -229,15 +281,23 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
     const pid = partner ? (partner._id || partner.id || partner).toString() : '';
     const isOnline = pid ? onlineUsers.includes(pid) : false;
     const name = partner?.name || 'Direct Message';
+    const statusInfo = pid ? userStatuses[pid] : null;
+    const lastSeenDate = statusInfo?.lastSeen || partner?.lastSeen;
+    const subtitle = isOnline
+      ? 'Online'
+      : lastSeenDate
+        ? `Last seen ${formatLastSeen(lastSeenDate)}`
+        : partner?.email || 'Offline';
+
     return {
       name,
       isOnline,
-      subtitle: isOnline ? 'Online' : partner?.email || 'Offline',
+      subtitle,
       avatarInitials: name.slice(0, 2).toUpperCase(),
       partner,
       isGroup: false
     };
-  }, [currentUserId, onlineUsers]);
+  }, [currentUserId, onlineUsers, userStatuses]);
 
   const loadChats = useCallback(async (silent = false) => {
     if (!token) return;
@@ -290,14 +350,27 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
     loadChats();
     loadContactsData();
     loadAllUsersForGroup('');
-  }, [loadChats, loadContactsData, loadAllUsersForGroup]);
+
+    // Fetch strict real-time presence initially
+    if (token) {
+      getPresenceStatus(token)
+        .then((res) => {
+          if (res?.onlineUsers) setOnlineUsers(res.onlineUsers);
+          if (res?.userStatuses) setUserStatuses(res.userStatuses);
+        })
+        .catch(() => {});
+    }
+  }, [loadChats, loadContactsData, loadAllUsersForGroup, token]);
 
   useEffect(() => {
     if (!user || !token) return;
 
     const socket = initSocket(user);
+    socket.emit('get_online_users');
 
-    const handleConnected = () => {};
+    const handleConnected = () => {
+      socket.emit('get_online_users');
+    };
 
     const handleOnlineUsers = (usersList) => {
       setOnlineUsers(usersList);
@@ -306,6 +379,15 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
     const handleUserPresence = (data) => {
       if (data?.onlineUsers) {
         setOnlineUsers(data.onlineUsers);
+      }
+      if (data?.userId) {
+        setUserStatuses((prev) => ({
+          ...prev,
+          [data.userId]: {
+            isOnline: data.status === 'online',
+            lastSeen: data.lastSeen || new Date()
+          }
+        }));
       }
     };
 
@@ -1507,31 +1589,34 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                   <ArrowLeft className="w-5 h-5" />
                 </button>
 
-                <div
-                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-xs sm:text-sm shrink-0 ${
-                    activeChat.isGroupChat
-                      ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
-                      : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
-                  }`}
-                >
-                  {activeChat.isGroupChat ? <Users className="w-5 h-5" /> : activeChatDetails.avatarInitials}
+                <div className="relative shrink-0">
+                  <div
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-xs sm:text-sm ${
+                      activeChat.isGroupChat
+                        ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
+                        : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
+                    }`}
+                  >
+                    {activeChat.isGroupChat ? <Users className="w-5 h-5" /> : activeChatDetails.avatarInitials}
+                  </div>
+                  {!activeChat.isGroupChat && (
+                    <span
+                      className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-900 ${
+                        activeChatDetails.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                      }`}
+                    />
+                  )}
                 </div>
 
                 <div className="min-w-0">
-                  <div className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 truncate">
-                    <span className="truncate">{activeChatDetails.name}</span>
-                    {!activeChat.isGroupChat && (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            activeChatDetails.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                          }`}
-                        />
-                        {activeChatDetails.isOnline ? 'Online' : 'Offline'}
-                      </span>
-                    )}
+                  <div className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">
+                    {activeChatDetails.name}
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 truncate font-medium">
+                  <div className={`text-xs truncate font-medium ${
+                    !activeChat.isGroupChat && activeChatDetails.isOnline
+                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                      : 'text-slate-500 dark:text-slate-400'
+                  }`}>
                     {activeChat.isGroupChat
                       ? `${activeChat.users?.length || 0} participants`
                       : activeChatDetails.subtitle}
@@ -2262,439 +2347,462 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
       </div>
 
       {previewMedia && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in"
-          onClick={() => setPreviewMedia(null)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
-            <img src={previewMedia.data} alt={previewMedia.name} className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl" />
-            <div className="mt-3 flex items-center gap-4">
-              <span className="text-white text-xs font-semibold">{previewMedia.name} ({formatFileSize(previewMedia.size)})</span>
-              <a
-                href={previewMedia.data}
-                download={previewMedia.name}
-                className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold flex items-center gap-1.5"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download</span>
-              </a>
-              <button
-                type="button"
-                onClick={() => setPreviewMedia(null)}
-                className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold"
-              >
-                Close
-              </button>
+        <ModalPortal>
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in"
+            onClick={() => setPreviewMedia(null)}
+          >
+            <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+              <img src={previewMedia.data} alt={previewMedia.name} className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl" />
+              <div className="mt-3 flex items-center gap-4">
+                <span className="text-white text-xs font-semibold">{previewMedia.name} ({formatFileSize(previewMedia.size)})</span>
+                <a
+                  href={previewMedia.data}
+                  download={previewMedia.name}
+                  className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMedia(null)}
+                  className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {showForwardModal && forwardingMessage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Forward className="w-5 h-5 text-blue-600" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Forward Message</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowForwardModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 border-b border-slate-200 dark:border-slate-800">
-              <input
-                type="text"
-                value={forwardSearch}
-                onChange={(e) => setForwardSearch(e.target.value)}
-                placeholder="Search chats to forward to..."
-                className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {chats
-                .filter((c) => getChatDetails(c).name.toLowerCase().includes(forwardSearch.toLowerCase()))
-                .map((chat) => {
-                  const cid = chat._id || chat.id;
-                  const details = getChatDetails(chat);
-                  const isSelected = forwardTargetIds.includes(cid);
-                  return (
-                    <button
-                      key={cid}
-                      type="button"
-                      onClick={() => {
-                        setForwardTargetIds((prev) =>
-                          prev.includes(cid) ? prev.filter((id) => id !== cid) : [...prev, cid]
-                        );
-                      }}
-                      className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-300 dark:border-blue-800'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
-                          {details.avatarInitials}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                            {details.name}
-                          </div>
-                          <div className="text-[11px] text-slate-400 truncate">{details.subtitle}</div>
-                        </div>
-                      </div>
-                      <div
-                        className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
-                          isSelected
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'border-slate-300 dark:border-slate-700'
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3.5 h-3.5" />}
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-
-            <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
-              <span className="text-xs text-slate-500">{forwardTargetIds.length} destination(s) selected</span>
-              <button
-                type="button"
-                disabled={forwardTargetIds.length === 0 || forwardLoading}
-                onClick={handleExecuteForward}
-                className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                {forwardLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Forward</span>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showAddContactModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-blue-600" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Add Contact</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddContactModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 border-b border-slate-200 dark:border-slate-800">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={contactSearchQuery}
-                  onChange={(e) => handleSearchUsers(e.target.value)}
-                  placeholder="Search user by name or email..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {searchingUsers ? (
-                <div className="py-8 flex items-center justify-center text-slate-400">
-                  <Loader2 className="w-5 h-5 animate-spin text-blue-600 mr-2" />
-                  <span className="text-xs">Searching users...</span>
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Forward className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Forward Message</h3>
                 </div>
-              ) : searchResults.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-400">
-                  {contactSearchQuery ? 'No users matching search' : 'Type to search platform users'}
-                </div>
-              ) : (
-                searchResults.map((usr) => {
-                  const uid = usr._id || usr.id;
-                  const alreadySaved = savedContacts.some((c) => (c._id || c.id).toString() === uid.toString());
-                  return (
-                    <div
-                      key={uid}
-                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                          {usr.name}
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                          {usr.email}
-                        </div>
-                      </div>
-                      {alreadySaved ? (
-                        <span className="text-xs font-bold text-emerald-600 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40">
-                          Added
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleAddContact(uid)}
-                          className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-xs"
-                        >
-                          Add Contact
-                        </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex justify-end bg-slate-50 dark:bg-slate-950">
-              <button
-                type="button"
-                onClick={() => setShowAddContactModal(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {reportingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-600" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Report Account</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReportingUser(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitReport} className="p-4 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Reported User
-                </label>
-                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white">
-                  {reportingUser.name} ({reportingUser.email})
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Reason for Report
-                </label>
-                <select
-                  value={reportReason}
-                  onChange={(e) => setReportReason(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-600"
-                >
-                  <option value="Spam">Spam</option>
-                  <option value="Harassment">Harassment or abusive behavior</option>
-                  <option value="Inappropriate Content">Inappropriate content</option>
-                  <option value="Suspicious Activity">Suspicious activity or scam</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Additional Details
-                </label>
-                <textarea
-                  value={reportDetails}
-                  onChange={(e) => setReportDetails(e.target.value)}
-                  rows={3}
-                  placeholder="Provide context or description of the incident..."
-                  className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-600"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setReportingUser(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                  onClick={() => setShowForwardModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingReport}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs"
-                >
-                  {submittingReport ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Submit Report</span>}
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {showNewDirectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Start Direct Chat</h3>
-              <button
-                type="button"
-                onClick={() => setShowNewDirectModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 border-b border-slate-200 dark:border-slate-800">
-              <input
-                type="text"
-                value={contactSearch}
-                onChange={(e) => {
-                  setContactSearch(e.target.value);
-                  loadAllUsersForGroup(e.target.value);
-                }}
-                placeholder="Search colleagues..."
-                className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {contacts.map((contact) => {
-                const cid = contact._id || contact.id;
-                return (
-                  <button
-                    key={cid}
-                    type="button"
-                    onClick={() => handleStartDirectChat(cid)}
-                    className="w-full p-2.5 rounded-xl text-left flex items-center gap-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
-                      {contact.name?.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        {contact.name}
-                      </div>
-                      <div className="text-[11px] text-slate-400 truncate">{contact.email}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showNewGroupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Create Group Chat</h3>
-              <button
-                type="button"
-                onClick={() => setShowNewGroupModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateGroup} className="p-4 flex-1 overflow-y-auto space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Group Name *
-                </label>
+              <div className="p-3 border-b border-slate-200 dark:border-slate-800">
                 <input
                   type="text"
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                  placeholder="e.g., Marketing Team"
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-                  required
+                  value={forwardSearch}
+                  onChange={(e) => setForwardSearch(e.target.value)}
+                  placeholder="Search chats to forward to..."
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Description
-                </label>
-                <input
-                  type="text"
-                  value={groupDescription}
-                  onChange={(e) => setGroupDescription(e.target.value)}
-                  placeholder="Brief purpose of the group..."
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                  Select Members ({selectedMembers.length} selected)
-                </label>
-                <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl p-2 space-y-1">
-                  {contacts.map((contact) => {
-                    const cid = contact._id || contact.id;
-                    const isSelected = selectedMembers.includes(cid);
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {chats
+                  .filter((c) => getChatDetails(c).name.toLowerCase().includes(forwardSearch.toLowerCase()))
+                  .map((chat) => {
+                    const cid = chat._id || chat.id;
+                    const details = getChatDetails(chat);
+                    const isSelected = forwardTargetIds.includes(cid);
                     return (
                       <button
                         key={cid}
                         type="button"
                         onClick={() => {
-                          setSelectedMembers((prev) =>
+                          setForwardTargetIds((prev) =>
                             prev.includes(cid) ? prev.filter((id) => id !== cid) : [...prev, cid]
                           );
                         }}
-                        className={`w-full p-2 rounded-lg text-left flex items-center justify-between text-xs cursor-pointer ${
-                          isSelected ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 font-bold' : 'hover:bg-slate-100'
+                        className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-300 dark:border-blue-800'
+                            : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                         }`}
                       >
-                        <span>{contact.name} ({contact.email})</span>
-                        {isSelected && <Check className="w-4 h-4 text-purple-600" />}
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
+                            {details.avatarInitials}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                              {details.name}
+                            </div>
+                            <div className="text-[11px] text-slate-400 truncate">{details.subtitle}</div>
+                          </div>
+                        </div>
+                        <div
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'border-slate-300 dark:border-slate-700'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5" />}
+                        </div>
                       </button>
                     );
                   })}
+              </div>
+
+              <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+                <span className="text-xs text-slate-500">{forwardTargetIds.length} destination(s) selected</span>
+                <button
+                  type="button"
+                  disabled={forwardTargetIds.length === 0 || forwardLoading}
+                  onClick={handleExecuteForward}
+                  className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  {forwardLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Forward</span>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {showAddContactModal && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Add Contact</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddContactModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={contactSearchQuery}
+                    onChange={(e) => handleSearchUsers(e.target.value)}
+                    placeholder="Search user by name or email..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                  />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {searchingUsers ? (
+                  <div className="py-8 flex items-center justify-center text-slate-400">
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-600 mr-2" />
+                    <span className="text-xs">Searching users...</span>
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    {contactSearchQuery ? 'No users matching search' : 'Type to search platform users'}
+                  </div>
+                ) : (
+                  searchResults.map((usr) => {
+                    const uid = usr._id || usr.id;
+                    const alreadySaved = savedContacts.some((c) => (c._id || c.id).toString() === uid.toString());
+                    return (
+                      <div
+                        key={uid}
+                        className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                            {usr.name}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {usr.email}
+                          </div>
+                        </div>
+                        {alreadySaved ? (
+                          <span className="text-xs font-bold text-emerald-600 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40">
+                            Added
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleAddContact(uid)}
+                            className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+                          >
+                            Add Contact
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex justify-end bg-slate-50 dark:bg-slate-950">
+                <button
+                  type="button"
+                  onClick={() => setShowAddContactModal(false)}
+                  className="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {reportingUser && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Report Account</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReportingUser(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitReport} className="p-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Reported User
+                  </label>
+                  <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white">
+                    {reportingUser.name} ({reportingUser.email})
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Reason for Report
+                  </label>
+                  <select
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-600"
+                  >
+                    <option value="Spam">Spam</option>
+                    <option value="Harassment">Harassment or abusive behavior</option>
+                    <option value="Inappropriate Content">Inappropriate content</option>
+                    <option value="Suspicious Activity">Suspicious activity or scam</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Additional Details
+                  </label>
+                  <textarea
+                    value={reportDetails}
+                    onChange={(e) => setReportDetails(e.target.value)}
+                    rows={3}
+                    placeholder="Provide context or description of the incident..."
+                    className="w-full p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setReportingUser(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingReport}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs"
+                  >
+                    {submittingReport ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Submit Report</span>}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {showNewDirectModal && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Start Direct Chat</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowNewDirectModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-3 border-b border-slate-200 dark:border-slate-800">
+                <input
+                  type="text"
+                  value={contactSearch}
+                  onChange={(e) => {
+                    setContactSearch(e.target.value);
+                    loadAllUsersForGroup(e.target.value);
+                  }}
+                  placeholder="Search colleagues..."
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {contacts.map((contact) => {
+                  const cid = contact._id || contact.id;
+                  return (
+                    <button
+                      key={cid}
+                      type="button"
+                      onClick={() => handleStartDirectChat(cid)}
+                      className="w-full p-2.5 rounded-xl text-left flex items-center gap-2.5 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
+                        {contact.name?.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate">
+                          {contact.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400 dark:text-slate-400 truncate">{contact.email}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {showNewGroupModal && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Create Group Chat</h3>
                 <button
                   type="button"
                   onClick={() => setShowNewGroupModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingGroup || !groupName.trim() || selectedMembers.length === 0}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-bold text-xs"
-                >
-                  {creatingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Group'}
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleCreateGroup} className="p-4 flex-1 overflow-y-auto space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Group Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="e.g., Marketing Team"
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={groupDescription}
+                    onChange={(e) => setGroupDescription(e.target.value)}
+                    placeholder="Brief purpose of the group..."
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                    Select Members ({selectedMembers.length} selected)
+                  </label>
+                  <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl p-2 space-y-1">
+                    {contacts.map((contact) => {
+                      const cid = contact._id || contact.id;
+                      const isSelected = selectedMembers.includes(cid);
+                      return (
+                        <button
+                          key={cid}
+                          type="button"
+                          onClick={() => {
+                            setSelectedMembers((prev) =>
+                              prev.includes(cid) ? prev.filter((id) => id !== cid) : [...prev, cid]
+                            );
+                          }}
+                          className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-900 dark:text-purple-200 font-bold'
+                              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-600 font-bold text-xs flex items-center justify-center shrink-0">
+                              {contact.name?.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold truncate">{contact.name}</div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{contact.email}</div>
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0 ml-2" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewGroupModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingGroup || !groupName.trim() || selectedMembers.length === 0}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-bold text-xs"
+                  >
+                    {creatingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Group'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {showGroupInfoModal && activeChat?.isGroupChat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
@@ -2883,6 +2991,7 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
             </div>
           </div>
         </div>
+      </ModalPortal>
       )}
     </div>
   );

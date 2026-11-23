@@ -4,6 +4,7 @@ import LandingPage from './pages/LandingPage';
 import AdminDashboard from './pages/AdminDashboard';
 import UserDashboard from './pages/UserDashboard';
 import { getCurrentUser } from './services/api';
+import { disconnectSocket } from './services/socket';
 import { Loader2 } from 'lucide-react';
 
 function App() {
@@ -64,6 +65,7 @@ function App() {
   };
 
   const handleLogout = () => {
+    disconnectSocket(true);
     localStorage.removeItem('mailchat_token');
     localStorage.removeItem('mailchat_user');
     setCurrentUser(null);

@@ -15,6 +15,7 @@ import reportRoutes from "./routes/reportRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import Chat from "./models/Chat.js";
 import Message from "./models/Message.js";
+import User from "./models/User.js";
 
 dotenv.config();
 
@@ -33,7 +34,8 @@ app.use(cors(corsOptions));
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  pingTimeout: 60000,
+  pingInterval: 10000,
+  pingTimeout: 15000,
   maxHttpBufferSize: 5e7,
   cors: corsOptions,
 });
@@ -61,6 +63,7 @@ app.get("/api/health", (req, res) => {
     timestamp: new Date().toISOString(),
     service: "MailChat Backend API",
     database: "MongoDB",
+    onlineUsersCount: onlineUsers.size,
   });
 });
 
@@ -79,6 +82,37 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Strict pruning helper for ghost or disconnected sockets
+const pruneDeadSockets = () => {
+  let changed = false;
+  for (const [userId, socketSet] of onlineUsers.entries()) {
+    for (const socketId of Array.from(socketSet)) {
+      const activeSocket = io.sockets.sockets.get(socketId);
+      if (!activeSocket || !activeSocket.connected) {
+        socketSet.delete(socketId);
+      }
+    }
+    if (socketSet.size === 0) {
+      onlineUsers.delete(userId);
+      const now = new Date();
+      User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: now }).exec();
+      io.emit("user_presence", {
+        userId,
+        status: "offline",
+        lastSeen: now,
+        onlineUsers: Array.from(onlineUsers.keys()),
+      });
+      changed = true;
+    }
+  }
+  if (changed) {
+    io.emit("online_users", Array.from(onlineUsers.keys()));
+  }
+};
+
+// Periodically run strict socket verification every 15 seconds
+setInterval(pruneDeadSockets, 15000);
+
 io.on("connection", (socket) => {
   socket.on("setup", async (userData) => {
     if (!userData) return;
@@ -92,6 +126,10 @@ io.on("connection", (socket) => {
       onlineUsers.set(userId, new Set());
     }
     onlineUsers.get(userId).add(socket.id);
+
+    // Update database presence strictly
+    const now = new Date();
+    await User.findByIdAndUpdate(userId, { isOnline: true, lastSeen: now }).catch(() => {});
 
     try {
       const userChats = await Chat.find({
@@ -130,8 +168,65 @@ io.on("connection", (socket) => {
     io.emit("user_presence", {
       userId,
       status: "online",
+      lastSeen: now,
       onlineUsers: Array.from(onlineUsers.keys()),
     });
+  });
+
+  // Client requests immediate strict online users list
+  socket.on("get_online_users", () => {
+    pruneDeadSockets();
+    socket.emit("online_users", Array.from(onlineUsers.keys()));
+  });
+
+  // Client heartbeat to maintain strict active state
+  socket.on("heartbeat", ({ userId } = {}) => {
+    const uid = userId || socket.userId;
+    if (uid) {
+      if (!onlineUsers.has(uid)) {
+        onlineUsers.set(uid, new Set());
+      }
+      onlineUsers.get(uid).add(socket.id);
+    }
+    socket.emit("heartbeat_ack", { timestamp: Date.now() });
+  });
+
+  // Client explicitly logs out
+  socket.on("user_logout", async (data) => {
+    const uid = (data?.userId || socket.userId)?.toString();
+    if (uid && onlineUsers.has(uid)) {
+      onlineUsers.delete(uid);
+      const now = new Date();
+      await User.findByIdAndUpdate(uid, { isOnline: false, lastSeen: now }).catch(() => {});
+      io.emit("online_users", Array.from(onlineUsers.keys()));
+      io.emit("user_presence", {
+        userId: uid,
+        status: "offline",
+        lastSeen: now,
+        onlineUsers: Array.from(onlineUsers.keys()),
+      });
+    }
+  });
+
+  // Client tab closing / navigating away
+  socket.on("user_offline", async (data) => {
+    const uid = (data?.userId || socket.userId)?.toString();
+    if (uid && onlineUsers.has(uid)) {
+      const userSockets = onlineUsers.get(uid);
+      userSockets.delete(socket.id);
+      if (userSockets.size === 0) {
+        onlineUsers.delete(uid);
+        const now = new Date();
+        await User.findByIdAndUpdate(uid, { isOnline: false, lastSeen: now }).catch(() => {});
+        io.emit("online_users", Array.from(onlineUsers.keys()));
+        io.emit("user_presence", {
+          userId: uid,
+          status: "offline",
+          lastSeen: now,
+          onlineUsers: Array.from(onlineUsers.keys()),
+        });
+      }
+    }
   });
 
   socket.on("join_chat", (room) => {
@@ -305,19 +400,25 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     if (socket.userId && onlineUsers.has(socket.userId)) {
       const userSockets = onlineUsers.get(socket.userId);
       userSockets.delete(socket.id);
       if (userSockets.size === 0) {
         onlineUsers.delete(socket.userId);
+        const now = new Date();
+        await User.findByIdAndUpdate(socket.userId, {
+          isOnline: false,
+          lastSeen: now,
+        }).catch(() => {});
+        io.emit("online_users", Array.from(onlineUsers.keys()));
+        io.emit("user_presence", {
+          userId: socket.userId,
+          status: "offline",
+          lastSeen: now,
+          onlineUsers: Array.from(onlineUsers.keys()),
+        });
       }
-      io.emit("online_users", Array.from(onlineUsers.keys()));
-      io.emit("user_presence", {
-        userId: socket.userId,
-        status: "offline",
-        onlineUsers: Array.from(onlineUsers.keys()),
-      });
     }
   });
 });
@@ -326,6 +427,11 @@ const startServer = async () => {
   try {
     await connectDB();
     await seedAdmin();
+
+    // Strict state reset: On startup, ensure all users are marked offline initially
+    await User.updateMany({}, { isOnline: false }).catch(() => {});
+    onlineUsers.clear();
+
     console.log("✅ Server is LIVE on PORT " + PORT);
 
     server.listen(PORT);

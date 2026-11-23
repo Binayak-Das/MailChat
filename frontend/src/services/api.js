@@ -107,7 +107,9 @@ export async function sendPasswordResetOtp(email) {
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.message || 'Failed to send recovery OTP');
+    const error = new Error(data.message || 'Failed to send recovery OTP');
+    error.isGoogleAccount = !!data.isGoogleAccount;
+    throw error;
   }
   return data;
 }
@@ -771,3 +773,132 @@ export async function adminToggleBan(token, userId, status) {
   }
   return data;
 }
+
+// Google OAuth API
+export async function googleAuthLogin({ credential, idToken, googleUser }) {
+  const response = await fetch(`${API_BASE_URL}/auth/google`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ credential, idToken, googleUser })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Google authentication failed');
+  }
+  return data;
+}
+
+// 2FA Authentication APIs
+export async function loginWith2FA({ tempToken, otp, email }) {
+  const response = await fetch(`${API_BASE_URL}/auth/login-2fa`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ tempToken, otp, email })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Two-factor verification failed');
+  }
+  return data;
+}
+
+export async function resend2faLoginOtp({ tempToken, email }) {
+  const response = await fetch(`${API_BASE_URL}/auth/2fa/resend-login-otp`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ tempToken, email })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to resend 2FA verification code');
+  }
+  return data;
+}
+
+export async function get2faStatus(token) {
+  const response = await fetch(`${API_BASE_URL}/auth/2fa/status`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch 2FA status');
+  }
+  return data;
+}
+
+export async function send2faSetupOtp(token) {
+  const response = await fetch(`${API_BASE_URL}/auth/2fa/send-setup-otp`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to send 2FA setup verification code');
+  }
+  return data;
+}
+
+export async function enable2fa(token, { otp }) {
+  const response = await fetch(`${API_BASE_URL}/auth/2fa/enable`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ otp })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to enable Two-Factor Authentication');
+  }
+  return data;
+}
+
+export async function disable2fa(token) {
+  const response = await fetch(`${API_BASE_URL}/auth/2fa/disable`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to disable Two-Factor Authentication');
+  }
+  return data;
+}
+
+// Strict Real-Time Presence API
+export async function getPresenceStatus(token) {
+  const response = await fetch(`${API_BASE_URL}/auth/presence`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch online presence status');
+  }
+  return data;
+}
+
