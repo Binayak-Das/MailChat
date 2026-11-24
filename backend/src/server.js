@@ -29,6 +29,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
+  "https://mail-chat.onrender.com",
   "https://mailchat.onrender.com",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -41,6 +42,7 @@ const isOriginAllowed = (origin) => {
   try {
     const parsed = new URL(origin);
     if (
+      parsed.hostname === "mail-chat.onrender.com" ||
       parsed.hostname === "mailchat.onrender.com" ||
       parsed.hostname.endsWith(".onrender.com") ||
       parsed.hostname === "localhost" ||
