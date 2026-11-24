@@ -3,6 +3,9 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 import { connectDB } from "./config/db.js";
 import { seedAdmin } from "./utils/seedAdmin.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -19,11 +22,40 @@ import User from "./models/User.js";
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = [
+  "https://mailchat.onrender.com",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  process.env.CLIENT_URL,
+].filter(Boolean);
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const parsed = new URL(origin);
+    if (
+      parsed.hostname === "mailchat.onrender.com" ||
+      parsed.hostname.endsWith(".onrender.com") ||
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1"
+    ) {
+      return true;
+    }
+  } catch {}
+  return true;
+};
+
 const corsOptions = {
-  origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+  origin: (origin, callback) => {
+    callback(null, isOriginAllowed(origin));
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -37,7 +69,11 @@ const io = new Server(server, {
   pingInterval: 10000,
   pingTimeout: 15000,
   maxHttpBufferSize: 5e7,
-  cors: corsOptions,
+  cors: {
+    origin: (origin, callback) => callback(null, true),
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
 });
 
 const onlineUsers = new Map();
@@ -423,6 +459,23 @@ io.on("connection", (socket) => {
   });
 });
 
+const startKeepAlive = () => {
+  const serviceUrl =
+    process.env.RENDER_EXTERNAL_URL ||
+    process.env.SERVER_URL ||
+    "https://mailchat-server.onrender.com";
+  if (!serviceUrl) return;
+
+  const pingUrl = `${serviceUrl.replace(/\/$/, "")}/api/health`;
+  const PING_INTERVAL_MS = 12 * 60 * 1000;
+
+  setInterval(async () => {
+    try {
+      await fetch(pingUrl);
+    } catch {}
+  }, PING_INTERVAL_MS);
+};
+
 const startServer = async () => {
   try {
     await connectDB();
@@ -432,9 +485,10 @@ const startServer = async () => {
     await User.updateMany({}, { isOnline: false }).catch(() => {});
     onlineUsers.clear();
 
-    console.log("✅ Server is LIVE on PORT " + PORT);
-
-    server.listen(PORT);
+    server.listen(PORT, () => {
+      console.log("✅ Server is LIVE on PORT " + PORT);
+      startKeepAlive();
+    });
   } catch (err) {
     console.error("Failed to start server:", err);
     process.exit(1);

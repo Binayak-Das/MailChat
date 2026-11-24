@@ -64,6 +64,16 @@ export const sendEmail = async (req, res) => {
     const snippetText = body.trim().replace(/\s+/g, ' ');
     const snippet = snippetText.length > 90 ? `${snippetText.slice(0, 90)}...` : snippetText;
 
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      const totalSize = attachments.reduce((sum, a) => sum + (Number(a.size) || 0), 0);
+      if (totalSize > 12 * 1024 * 1024) {
+        return res.status(400).json({
+          success: false,
+          message: 'Total attachments size cannot exceed 12MB per email'
+        });
+      }
+    }
+
     const validAttachments = Array.isArray(attachments)
       ? attachments.map((att) => ({
         name: att.name || 'attachment',

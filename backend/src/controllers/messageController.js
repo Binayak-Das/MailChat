@@ -16,6 +16,16 @@ export const sendMessage = async (req, res) => {
       });
     }
 
+    if (hasAttachments) {
+      const totalSize = attachments.reduce((sum, a) => sum + (Number(a.size) || 0), 0);
+      if (totalSize > 12 * 1024 * 1024) {
+        return res.status(400).json({
+          success: false,
+          message: 'Total attachments size cannot exceed 12MB per message'
+        });
+      }
+    }
+
     const chat = await Chat.findById(chatId);
     if (!chat) {
       return res.status(404).json({

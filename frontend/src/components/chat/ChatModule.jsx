@@ -677,10 +677,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const maxSingleSize = 15 * 1024 * 1024;
+    const maxSingleSize = 10 * 1024 * 1024;
     const validFiles = files.filter((f) => {
       if (f.size > maxSingleSize) {
-        showToast?.(`"${f.name}" exceeds 15MB limit`, 'error');
+        showToast?.(`"${f.name}" exceeds 10MB limit`, 'error');
         return false;
       }
       return true;
@@ -1961,6 +1961,15 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                                 return (
                                   <div key={aIdx} className="rounded-2xl overflow-hidden max-w-xs sm:max-w-sm shadow-xs border border-slate-200 dark:border-slate-700">
                                     <video src={att.data} controls className="w-full max-h-64 rounded-2xl" />
+                                  </div>
+                                );
+                              }
+
+                              if (att.type?.startsWith('audio/')) {
+                                return (
+                                  <div key={aIdx} className="rounded-2xl p-2.5 max-w-xs sm:max-w-sm shadow-xs border border-slate-200 dark:border-slate-700 bg-black/5 dark:bg-white/5">
+                                    <p className="text-xs truncate font-medium mb-1.5 opacity-90">{att.name}</p>
+                                    <audio src={att.data} controls className="w-full h-9 rounded-xl" />
                                   </div>
                                 );
                               }

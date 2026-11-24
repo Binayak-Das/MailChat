@@ -327,7 +327,14 @@ export default function MailModule({ user = {}, showToast = () => {}, onUnreadCo
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
+    const maxFileSize = 10 * 1024 * 1024;
+
     files.forEach((file) => {
+      if (file.size > maxFileSize) {
+        showToast(`"${file.name}" exceeds 10MB limit.`);
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         setReplyAttachments((prev) => [
@@ -1405,6 +1412,10 @@ ${emailToForward.body || ''}`;
                                           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
                                             Enlarge
                                           </div>
+                                        </div>
+                                      ) : att.type?.startsWith('audio/') ? (
+                                        <div className="mb-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-2 flex flex-col justify-center">
+                                          <audio src={att.data} controls className="w-full h-8" />
                                         </div>
                                       ) : (
                                         <div className="mb-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 h-20 flex items-center justify-center text-blue-600 dark:text-blue-400">
