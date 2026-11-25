@@ -14,8 +14,7 @@ import {
   Eye,
   EyeOff,
   RotateCcw,
-  ShieldCheck,
-  Globe
+  ShieldCheck
 } from 'lucide-react';
 import {
   loginUser,
@@ -38,7 +37,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
     password: ''
   });
 
-  // Password Recovery State
   const [recoveryStep, setRecoveryStep] = useState(1);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -49,7 +47,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // 2FA Challenge State
   const [twoFactorEmail, setTwoFactorEmail] = useState('');
   const [twoFactorTempToken, setTwoFactorTempToken] = useState('');
   const [twoFactorOtp, setTwoFactorOtp] = useState('');
@@ -109,7 +106,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
     try {
       const res = await googleAuthLogin(googlePayload);
 
-      // Check if 2FA applies
       if (res.require2FA) {
         setTwoFactorEmail(res.email);
         setTwoFactorTempToken(res.tempToken);
@@ -189,7 +185,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
           password: formData.password
         });
 
-        // 2FA required
         if (res.require2FA) {
           setTwoFactorEmail(res.email);
           setTwoFactorTempToken(res.tempToken);
@@ -380,7 +375,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
         if (e.target === e.currentTarget) handleClose();
       }}
     >
-      <div className="relative w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-2xl shadow-slate-400/20 dark:shadow-slate-950/50 transition-colors duration-200">
+      <div className="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-2xl shadow-slate-400/20 dark:shadow-slate-950/50 transition-colors duration-200">
 
         <button
           onClick={handleClose}
@@ -531,7 +526,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
           </div>
         )}
 
-        {/* GOOGLE SIGN IN BUTTON */}
         {mode !== 'forgot-password' && mode !== '2fa-challenge' && (
           <div className="mb-4">
             <button
@@ -557,7 +551,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
           </div>
         )}
 
-        {/* 2FA VERIFICATION CHALLENGE VIEW */}
         {mode === '2fa-challenge' && (
           <form onSubmit={handleVerify2FA} className="space-y-4 text-xs">
             <div>
@@ -607,7 +600,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
           </form>
         )}
 
-        {/* STANDARD SIGN IN / REGISTER FORM */}
         {mode !== 'forgot-password' && mode !== '2fa-challenge' && (
           <form onSubmit={handleAuthSubmit} className="space-y-4 text-xs">
             {mode === 'register' && (
@@ -695,10 +687,27 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
                 </>
               )}
             </button>
+
+            {mode === 'register' && (
+              <p className="mt-3 text-[11px] text-center text-slate-500 dark:text-slate-400">
+                By creating an account, you agree to our{' '}
+                <a href="/terms" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                  Terms
+                </a>
+                ,{' '}
+                <a href="/privacy" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                  Privacy Policy
+                </a>
+                , and consent to{' '}
+                <a href="/cookies" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                  Cookie Storage
+                </a>
+                .
+              </p>
+            )}
           </form>
         )}
 
-        {/* FORGOT PASSWORD FLOW */}
         {mode === 'forgot-password' && recoveryStep === 1 && (
           <form onSubmit={handleSendOtp} className="space-y-4 text-xs">
             <div>

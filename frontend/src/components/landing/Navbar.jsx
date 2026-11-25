@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   MessageSquare,
   Menu,
@@ -27,9 +27,10 @@ export default function Navbar({
   const dropdownRef = useRef(null);
 
   const navLinks = [
-    { name: 'Features', href: '#features' },
-    { name: 'How It Works', href: '#how-it-works' },
-    { name: 'Security', href: '#features' }
+    { name: 'Features', href: '/#features', isInternal: false },
+    { name: 'Terms of Service', href: '/terms', isInternal: true },
+    { name: 'Privacy Policy', href: '/privacy', isInternal: true },
+    { name: 'Cookie Policy', href: '/cookies', isInternal: true }
   ];
 
   useEffect(() => {
@@ -55,25 +56,35 @@ export default function Navbar({
         <div className="flex items-center justify-between h-20">
 
           <div className="flex items-center gap-3">
-            <a href="#" className="flex items-center gap-2.5 group cursor-pointer">
+            <Link to="/" className="flex items-center gap-2.5 group cursor-pointer">
               <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-600/20 group-hover:bg-blue-700 transition-colors">
                 <MessageSquare className="w-5 h-5 text-white fill-white/20" />
               </div>
               <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
                 Mail<span className="text-blue-600 dark:text-blue-400">Chat</span>
               </span>
-            </a>
+            </Link>
           </div>
 
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-4 lg:gap-7">
             {navLinks.map((link) => (
-              <a
-                key={link.name}
-                href={link.href}
-                className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-              >
-                {link.name}
-              </a>
+              link.isInternal ? (
+                <Link
+                  key={link.name}
+                  to={link.href}
+                  className="text-xs lg:text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  {link.name}
+                </Link>
+              ) : (
+                <a
+                  key={link.name}
+                  href={link.href}
+                  className="text-xs lg:text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  {link.name}
+                </a>
+              )
             ))}
           </div>
 
@@ -100,9 +111,8 @@ export default function Navbar({
                   className="flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200/80 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer select-none"
                   aria-expanded={userDropdownOpen}
                 >
-                  <div className={`w-8 h-8 rounded-xl text-white font-bold flex items-center justify-center text-xs shadow-xs ${
-                    currentUser.role === 'admin' ? 'bg-indigo-600' : currentUser.role === 'user' ? 'bg-blue-600' : 'bg-amber-500'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-xl text-white font-bold flex items-center justify-center text-xs shadow-xs ${currentUser.role === 'admin' ? 'bg-indigo-600' : currentUser.role === 'user' ? 'bg-blue-600' : 'bg-amber-500'
+                    }`}>
                     {getInitials(currentUser.name)}
                   </div>
                   <div className="text-left">
@@ -125,9 +135,8 @@ export default function Navbar({
                       )}
                     </div>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ml-1 ${
-                    userDropdownOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''
-                  }`} />
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ml-1 ${userDropdownOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''
+                    }`} />
                 </button>
 
                 {userDropdownOpen && (
@@ -141,13 +150,12 @@ export default function Navbar({
                         {currentUser.email}
                       </p>
                       <div className="mt-2">
-                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                          currentUser.role === 'admin'
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full ${currentUser.role === 'admin'
                             ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
                             : currentUser.role === 'user'
-                            ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                            : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                        }`}>
+                              ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                              : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                          }`}>
                           {currentUser.role === 'admin' ? 'Administrator' : currentUser.role === 'user' ? 'Member' : 'Pending Role'}
                         </span>
                       </div>
@@ -226,16 +234,27 @@ export default function Navbar({
       </div>
 
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 pt-2 pb-6 space-y-3">
+        <div className="md:hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 pt-2 pb-6 space-y-2">
           {navLinks.map((link) => (
-            <a
-              key={link.name}
-              href={link.href}
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 rounded-lg text-base font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 hover:text-blue-600 dark:hover:text-white cursor-pointer"
-            >
-              {link.name}
-            </a>
+            link.isInternal ? (
+              <Link
+                key={link.name}
+                to={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3.5 py-2.5 rounded-xl text-base font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 hover:text-blue-600 dark:hover:text-white cursor-pointer transition-colors"
+              >
+                {link.name}
+              </Link>
+            ) : (
+              <a
+                key={link.name}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3.5 py-2.5 rounded-xl text-base font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 hover:text-blue-600 dark:hover:text-white cursor-pointer transition-colors"
+              >
+                {link.name}
+              </a>
+            )
           ))}
 
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
@@ -243,9 +262,8 @@ export default function Navbar({
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-100 dark:bg-slate-900">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg text-white font-bold flex items-center justify-center text-xs ${
-                      currentUser.role === 'admin' ? 'bg-indigo-600' : currentUser.role === 'user' ? 'bg-blue-600' : 'bg-amber-500'
-                    }`}>
+                    <div className={`w-8 h-8 rounded-lg text-white font-bold flex items-center justify-center text-xs ${currentUser.role === 'admin' ? 'bg-indigo-600' : currentUser.role === 'user' ? 'bg-blue-600' : 'bg-amber-500'
+                      }`}>
                       {getInitials(currentUser.name)}
                     </div>
                     <div>
@@ -253,9 +271,8 @@ export default function Navbar({
                       <div className="text-xs text-slate-500">{currentUser.email}</div>
                     </div>
                   </div>
-                  <span className={`px-2.5 py-0.5 rounded text-xs font-semibold ${
-                    currentUser.role === 'admin' ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300' : currentUser.role === 'user' ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300' : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
-                  }`}>
+                  <span className={`px-2.5 py-0.5 rounded text-xs font-semibold ${currentUser.role === 'admin' ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300' : currentUser.role === 'user' ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300' : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                    }`}>
                     {currentUser.role === 'admin' ? 'Admin' : currentUser.role === 'user' ? 'Member' : 'Pending'}
                   </span>
                 </div>

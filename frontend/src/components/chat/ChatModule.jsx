@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { cookieStorage } from '../../services/storage';
 import {
   MessageSquare,
   Users,
@@ -117,7 +118,6 @@ const formatLastSeen = (dateString) => {
 
   const now = new Date();
 
-  // Format time as 10:00am / 02:45pm
   const hours = date.getHours();
   const minutes = date.getMinutes();
   const ampm = hours >= 12 ? 'pm' : 'am';
@@ -160,7 +160,7 @@ const ModalPortal = ({ children }) => {
 };
 
 export default function ChatModule({ user, showToast, onUnreadCountChange }) {
-  const token = localStorage.getItem('mailchat_token');
+  const token = cookieStorage.getItem('mailchat_token');
   const currentUserId = user?._id || user?.id;
 
   const [chats, setChats] = useState([]);
@@ -351,14 +351,13 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
     loadContactsData();
     loadAllUsersForGroup('');
 
-    // Fetch strict real-time presence initially
     if (token) {
       getPresenceStatus(token)
         .then((res) => {
           if (res?.onlineUsers) setOnlineUsers(res.onlineUsers);
           if (res?.userStatuses) setUserStatuses(res.userStatuses);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [loadChats, loadContactsData, loadAllUsersForGroup, token]);
 
@@ -435,9 +434,9 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
         setTimeout(() => scrollToBottom(), 50);
 
         socket.emit('mark_messages_read', { chatId: msgChatId });
-        markMessagesRead(token, msgChatId).catch(() => {});
+        markMessagesRead(token, msgChatId).catch(() => { });
       } else {
-        const audioPref = localStorage.getItem('mailchat_pref_audio_alerts');
+        const audioPref = cookieStorage.getItem('mailchat_pref_audio_alerts');
         if (audioPref !== 'false') playWhatsAppNotificationSound();
         const senderName = newMessage.sender?.name || 'Someone';
         const snippet = newMessage.content || (newMessage.attachments?.length ? 'Sent an attachment' : 'New message');
@@ -542,7 +541,7 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
     };
 
     const handleGroupActivity = ({ title, message, chat }) => {
-      const audioPref = localStorage.getItem('mailchat_pref_audio_alerts');
+      const audioPref = cookieStorage.getItem('mailchat_pref_audio_alerts');
       if (audioPref !== 'false') playWhatsAppNotificationSound();
       showToast?.(`${title}: ${message}`, 'info');
       sendDesktopNotification(title, { body: message });
@@ -631,7 +630,7 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
     const socket = getSocket();
     socket.emit('join_chat', activeChatId);
     socket.emit('mark_messages_read', { chatId: activeChatId });
-    markMessagesRead(token, activeChatId).catch(() => {});
+    markMessagesRead(token, activeChatId).catch(() => { });
 
     setChats((prev) =>
       prev.map((c) =>
@@ -1239,20 +1238,18 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
       />
 
       <div
-        className={`w-full md:w-80 lg:w-96 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 ${
-          mobileChatOpen ? 'hidden md:flex' : 'flex'
-        }`}
+        className={`w-full md:w-80 lg:w-96 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 ${mobileChatOpen ? 'hidden md:flex' : 'flex'
+          }`}
       >
         <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
             <button
               type="button"
               onClick={() => setSidebarTab('chats')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                sidebarTab === 'chats'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${sidebarTab === 'chats'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+                }`}
             >
               Chats
             </button>
@@ -1262,11 +1259,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                 setSidebarTab('contacts');
                 loadContactsData();
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                sidebarTab === 'contacts'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${sidebarTab === 'contacts'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+                }`}
             >
               Contacts
             </button>
@@ -1276,11 +1272,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                 setSidebarTab('blocked');
                 loadContactsData();
               }}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                sidebarTab === 'blocked'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
-              }`}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${sidebarTab === 'blocked'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+                }`}
             >
               Blocked
             </button>
@@ -1343,11 +1338,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                     key={tab}
                     type="button"
                     onClick={() => setChatTab(tab)}
-                    className={`flex-1 py-1 text-xs font-semibold rounded-lg capitalize transition-colors cursor-pointer ${
-                      chatTab === tab
-                        ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
+                    className={`flex-1 py-1 text-xs font-semibold rounded-lg capitalize transition-colors cursor-pointer ${chatTab === tab
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
                   >
                     {tab}
                   </button>
@@ -1384,27 +1378,24 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                         setActiveChat(chat);
                         setMobileChatOpen(true);
                       }}
-                      className={`w-full p-2.5 rounded-xl text-left flex items-start gap-3 transition-colors cursor-pointer ${
-                        isActive
-                          ? 'bg-blue-50/90 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100'
-                          : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60 text-slate-800 dark:text-slate-200'
-                      }`}
+                      className={`w-full p-2.5 rounded-xl text-left flex items-start gap-3 transition-colors cursor-pointer ${isActive
+                        ? 'bg-blue-50/90 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100'
+                        : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60 text-slate-800 dark:text-slate-200'
+                        }`}
                     >
                       <div className="relative shrink-0 mt-0.5">
                         <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs ${
-                            chat.isGroupChat
-                              ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
-                              : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
-                          }`}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs ${chat.isGroupChat
+                            ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
+                            : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
+                            }`}
                         >
                           {chat.isGroupChat ? <Users className="w-5 h-5" /> : details.avatarInitials}
                         </div>
                         {!chat.isGroupChat && (
                           <span
-                            className={`w-2.5 h-2.5 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-900 ${
-                              details.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                            }`}
+                            className={`w-2.5 h-2.5 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-900 ${details.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                              }`}
                           />
                         )}
                       </div>
@@ -1421,10 +1412,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                             {lastMsg?.isDeleted
                               ? 'Message was deleted'
                               : lastMsg?.content
-                              ? lastMsg.content
-                              : lastMsg?.attachments?.length
-                              ? `📎 Media (${lastMsg.attachments.length})`
-                              : 'No messages yet'}
+                                ? lastMsg.content
+                                : lastMsg?.attachments?.length
+                                  ? `📎 Media (${lastMsg.attachments.length})`
+                                  : 'No messages yet'}
                           </p>
                           {chat.unreadCount > 0 && (
                             <span className="px-1.5 py-0.2 bg-blue-600 text-white font-extrabold text-[10px] rounded-full shrink-0">
@@ -1466,9 +1457,8 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                           {contact.name?.slice(0, 2).toUpperCase() || 'CT'}
                         </div>
                         <span
-                          className={`w-2 h-2 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-900 ${
-                            isOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                          }`}
+                          className={`w-2 h-2 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-900 ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`}
                         />
                       </div>
                       <div className="min-w-0">
@@ -1545,16 +1535,15 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
       </div>
 
       <div
-        className={`flex-1 flex-col h-full bg-white dark:bg-slate-900 overflow-hidden relative ${
-          mobileChatOpen ? 'flex' : 'hidden md:flex'
-        }`}
+        className={`flex-1 flex-col h-full bg-white dark:bg-slate-900 overflow-hidden relative ${mobileChatOpen ? 'flex' : 'hidden md:flex'
+          }`}
       >
         {!activeChat ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/40 dark:bg-slate-950/20">
             <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 shadow-xs">
               <MessageSquare className="w-8 h-8" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Instant Real-Time Chat</h3>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Chats</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1.5 leading-relaxed">
               Select a conversation from the left to start messaging, manage contacts, and collaborate seamlessly.
             </p>
@@ -1591,19 +1580,17 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
 
                 <div className="relative shrink-0">
                   <div
-                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-xs sm:text-sm ${
-                      activeChat.isGroupChat
-                        ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
-                        : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
-                    }`}
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-xs sm:text-sm ${activeChat.isGroupChat
+                      ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
+                      : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
+                      }`}
                   >
                     {activeChat.isGroupChat ? <Users className="w-5 h-5" /> : activeChatDetails.avatarInitials}
                   </div>
                   {!activeChat.isGroupChat && (
                     <span
-                      className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-900 ${
-                        activeChatDetails.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                      }`}
+                      className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-900 ${activeChatDetails.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
                     />
                   )}
                 </div>
@@ -1612,11 +1599,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                   <div className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">
                     {activeChatDetails.name}
                   </div>
-                  <div className={`text-xs truncate font-medium ${
-                    !activeChat.isGroupChat && activeChatDetails.isOnline
-                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}>
+                  <div className={`text-xs truncate font-medium ${!activeChat.isGroupChat && activeChatDetails.isOnline
+                    ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                    : 'text-slate-500 dark:text-slate-400'
+                    }`}>
                     {activeChat.isGroupChat
                       ? `${activeChat.users?.length || 0} participants`
                       : activeChatDetails.subtitle}
@@ -1794,9 +1780,8 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                       <div className={`max-w-[85%] sm:max-w-md md:max-w-lg relative ${isMe ? 'items-end text-right' : 'items-start text-left'}`}>
                         {!m.isDeleted && (
                           <div
-                            className={`absolute -top-3.5 ${
-                              isMe ? 'right-0' : 'left-0'
-                            } hidden group-hover:flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-md z-20 backdrop-blur-sm`}
+                            className={`absolute -top-3.5 ${isMe ? 'right-0' : 'left-0'
+                              } hidden group-hover:flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-md z-20 backdrop-blur-sm`}
                           >
                             {['👍', '❤️', '😂', '😮', '😢', '🔥'].map((emoji) => {
                               const isSelected = singleReaction?.emoji === emoji;
@@ -1805,9 +1790,8 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                                   key={emoji}
                                   type="button"
                                   onClick={() => handleReaction(msgId, emoji)}
-                                  className={`hover:scale-125 transition-transform p-0.5 rounded-full text-xs leading-none cursor-pointer ${
-                                    isSelected ? 'bg-blue-100 dark:bg-blue-900/60 scale-110' : ''
-                                  }`}
+                                  className={`hover:scale-125 transition-transform p-0.5 rounded-full text-xs leading-none cursor-pointer ${isSelected ? 'bg-blue-100 dark:bg-blue-900/60 scale-110' : ''
+                                    }`}
                                   title={isSelected ? `Remove ${emoji}` : `React ${emoji}`}
                                 >
                                   {emoji}
@@ -1900,11 +1884,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                                 }, 1500);
                               }
                             }}
-                            className={`mb-1.5 p-2 rounded-xl text-xs border-l-4 cursor-pointer transition-colors max-w-sm ${
-                              isMe
-                                ? 'bg-emerald-700/40 border-white/60 text-white text-left'
-                                : 'bg-slate-200/80 dark:bg-slate-800/80 border-blue-500 text-slate-800 dark:text-slate-200 text-left'
-                            }`}
+                            className={`mb-1.5 p-2 rounded-xl text-xs border-l-4 cursor-pointer transition-colors max-w-sm ${isMe
+                              ? 'bg-emerald-700/40 border-white/60 text-white text-left'
+                              : 'bg-slate-200/80 dark:bg-slate-800/80 border-blue-500 text-slate-800 dark:text-slate-200 text-left'
+                              }`}
                           >
                             <div className="font-bold text-[11px] flex items-center gap-1">
                               <CornerUpLeft className="w-3 h-3 opacity-70" />
@@ -1977,17 +1960,15 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                               return (
                                 <div
                                   key={aIdx}
-                                  className={`flex items-center justify-between gap-3 p-3 rounded-2xl border max-w-xs sm:max-w-sm shadow-xs ${
-                                    isMe
-                                      ? 'bg-emerald-600 dark:bg-emerald-700 text-white border-emerald-500'
-                                      : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
-                                  }`}
+                                  className={`flex items-center justify-between gap-3 p-3 rounded-2xl border max-w-xs sm:max-w-sm shadow-xs ${isMe
+                                    ? 'bg-emerald-600 dark:bg-emerald-700 text-white border-emerald-500'
+                                    : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
+                                    }`}
                                 >
                                   <div className="flex items-center gap-2.5 min-w-0">
                                     <div
-                                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                                        isMe ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
-                                      }`}
+                                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isMe ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
+                                        }`}
                                     >
                                       <FileText className="w-5 h-5" />
                                     </div>
@@ -2002,9 +1983,8 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                                   <a
                                     href={att.data}
                                     download={att.name}
-                                    className={`p-1.5 rounded-lg transition-colors shrink-0 cursor-pointer ${
-                                      isMe ? 'hover:bg-white/20 text-white' : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
-                                    }`}
+                                    className={`p-1.5 rounded-lg transition-colors shrink-0 cursor-pointer ${isMe ? 'hover:bg-white/20 text-white' : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                      }`}
                                   >
                                     <Download className="w-4 h-4" />
                                   </a>
@@ -2051,11 +2031,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                         ) : (
                           m.content && (
                             <div
-                              className={`px-4 py-2.5 rounded-2xl text-sm sm:text-base leading-relaxed break-words whitespace-pre-wrap relative ${
-                                isMe
-                                  ? 'bg-emerald-600 dark:bg-emerald-700 text-white rounded-tr-xs shadow-xs'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-xs'
-                              }`}
+                              className={`px-4 py-2.5 rounded-2xl text-sm sm:text-base leading-relaxed break-words whitespace-pre-wrap relative ${isMe
+                                ? 'bg-emerald-600 dark:bg-emerald-700 text-white rounded-tr-xs shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-xs'
+                                }`}
                             >
                               <div>{m.content}</div>
 
@@ -2096,11 +2075,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                             <button
                               type="button"
                               onClick={() => handleReaction(msgId, singleReaction.emoji)}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border shadow-xs transition-all cursor-pointer ${
-                                isMyReaction
-                                  ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
-                              }`}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border shadow-xs transition-all cursor-pointer ${isMyReaction
+                                ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                                }`}
                               title={isMyReaction ? 'Click to remove reaction' : `Reacted with ${singleReaction.emoji}`}
                             >
                               <span className="text-sm leading-none">{singleReaction.emoji}</span>
@@ -2144,11 +2122,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                             setSelectedEmojiCat(cat.name);
                             setEmojiSearch('');
                           }}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
-                            selectedEmojiCat === cat.name
-                              ? 'bg-blue-600 text-white shadow-xs'
-                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-                          }`}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${selectedEmojiCat === cat.name
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                            }`}
                         >
                           <span>{cat.icon}</span>
                           <span className="text-[11px] hidden sm:inline">{cat.name}</span>
@@ -2279,10 +2256,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                       isCurrentChatBlocked
                         ? 'Cannot message blocked contact...'
                         : editingMessage
-                        ? 'Update message...'
-                        : attachments.length > 0
-                        ? 'Add a caption...'
-                        : `Message ${activeChatDetails.name}...`
+                          ? 'Update message...'
+                          : attachments.length > 0
+                            ? 'Add a caption...'
+                            : `Message ${activeChatDetails.name}...`
                     }
                     className="w-full text-sm sm:text-base bg-transparent border-none text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   />
@@ -2314,9 +2291,8 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                       type="button"
                       disabled={isCurrentChatBlocked}
                       onClick={() => setShowEmojiPicker((prev) => !prev)}
-                      className={`p-1.5 rounded-lg hover:text-amber-500 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition-colors disabled:opacity-40 ${
-                        showEmojiPicker ? 'text-amber-500 bg-slate-200 dark:bg-slate-800' : ''
-                      }`}
+                      className={`p-1.5 rounded-lg hover:text-amber-500 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition-colors disabled:opacity-40 ${showEmojiPicker ? 'text-amber-500 bg-slate-200 dark:bg-slate-800' : ''
+                        }`}
                       title="Emoji Picker"
                     >
                       <Smile className="w-4.5 h-4.5" />
@@ -2430,11 +2406,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                             prev.includes(cid) ? prev.filter((id) => id !== cid) : [...prev, cid]
                           );
                         }}
-                        className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-300 dark:border-blue-800'
-                            : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
-                        }`}
+                        className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between transition-colors cursor-pointer ${isSelected
+                          ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                          }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
@@ -2448,11 +2423,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                           </div>
                         </div>
                         <div
-                          className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? 'bg-blue-600 border-blue-600 text-white'
-                              : 'border-slate-300 dark:border-slate-700'
-                          }`}
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${isSelected
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'border-slate-300 dark:border-slate-700'
+                            }`}
                         >
                           {isSelected && <Check className="w-3.5 h-3.5" />}
                         </div>
@@ -2764,11 +2738,10 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                               prev.includes(cid) ? prev.filter((id) => id !== cid) : [...prev, cid]
                             );
                           }}
-                          className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between text-xs cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-900 dark:text-purple-200 font-bold'
-                              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
-                          }`}
+                          className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between text-xs cursor-pointer transition-colors ${isSelected
+                            ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-900 dark:text-purple-200 font-bold'
+                            : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                            }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-600 font-bold text-xs flex items-center justify-center shrink-0">
@@ -2812,195 +2785,194 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
         <ModalPortal>
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Group Details</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {activeChat.users?.length || 0} participants in this group
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowGroupInfoModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-5">
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Group Name
-                </div>
-                {isEditingName && (isGroupAdmin || user?.role === 'admin') ? (
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      type="text"
-                      value={newGroupName}
-                      onChange={(e) => setNewGroupName(e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRenameGroup}
-                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-colors"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingName(false)}
-                      className="px-2.5 py-1.5 rounded-lg text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold cursor-pointer transition-colors"
-                    >
-                      Cancel
-                    </button>
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
+                    <Users className="w-5 h-5" />
                   </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="text-base font-extrabold text-slate-900 dark:text-white">
-                      {activeChat.chatName}
-                    </div>
-                    {(isGroupAdmin || user?.role === 'admin') && (
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Group Details</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {activeChat.users?.length || 0} participants in this group
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowGroupInfoModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Group Name
+                  </div>
+                  {isEditingName && (isGroupAdmin || user?.role === 'admin') ? (
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="text"
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        className="flex-1 px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                      />
                       <button
                         type="button"
-                        onClick={() => {
-                          setNewGroupName(activeChat.chatName || '');
-                          setIsEditingName(true);
-                        }}
-                        className="p-1 text-slate-400 hover:text-purple-600 cursor-pointer"
-                        title="Rename Group"
+                        onClick={handleRenameGroup}
+                        className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-colors"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        Save
                       </button>
-                    )}
-                  </div>
-                )}
-                {activeChat.groupDescription && (
-                  <div className="text-xs text-slate-500 mt-2">{activeChat.groupDescription}</div>
-                )}
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <UserPlus className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Add Member to Group</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={addingMemberUserId}
-                    onChange={(e) => setAddingMemberUserId(e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  >
-                    <option value="">Select a contact to add...</option>
-                    {nonMemberContacts.map((contact) => (
-                      <option key={contact._id || contact.id} value={contact._id || contact.id}>
-                        {contact.name} ({contact.email})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddMemberToGroup}
-                    disabled={!addingMemberUserId}
-                    className="px-3.5 py-1.5 text-xs font-bold bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-xl shadow-xs"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                    Participants ({activeChat.users?.length || 0})
-                  </span>
-                  {isGroupAdmin && (
-                    <span className="text-[11px] text-purple-600 font-semibold">You are Group Admin</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingName(false)}
+                        className="px-2.5 py-1.5 rounded-lg text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="text-base font-extrabold text-slate-900 dark:text-white">
+                        {activeChat.chatName}
+                      </div>
+                      {(isGroupAdmin || user?.role === 'admin') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewGroupName(activeChat.chatName || '');
+                            setIsEditingName(true);
+                          }}
+                          className="p-1 text-slate-400 hover:text-purple-600 cursor-pointer"
+                          title="Rename Group"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {activeChat.groupDescription && (
+                    <div className="text-xs text-slate-500 mt-2">{activeChat.groupDescription}</div>
                   )}
                 </div>
 
-                <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                  {activeChat.users?.map((member) => {
-                    const memberId = (member._id || member.id || member).toString();
-                    const isMe = memberId === currentUserId?.toString();
-                    const isMemberAdmin =
-                      (activeChat.groupAdmin?._id || activeChat.groupAdmin)?.toString() === memberId;
-                    const isOnline = onlineUsers.includes(memberId);
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <UserPlus className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Add Member to Group</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={addingMemberUserId}
+                      onChange={(e) => setAddingMemberUserId(e.target.value)}
+                      className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    >
+                      <option value="">Select a contact to add...</option>
+                      {nonMemberContacts.map((contact) => (
+                        <option key={contact._id || contact.id} value={contact._id || contact.id}>
+                          {contact.name} ({contact.email})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddMemberToGroup}
+                      disabled={!addingMemberUserId}
+                      className="px-3.5 py-1.5 text-xs font-bold bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-xl shadow-xs"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
 
-                    return (
-                      <div
-                        key={memberId}
-                        className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="relative">
-                            <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
-                              {member.name?.slice(0, 2).toUpperCase() || 'MB'}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      Participants ({activeChat.users?.length || 0})
+                    </span>
+                    {isGroupAdmin && (
+                      <span className="text-[11px] text-purple-600 font-semibold">You are Group Admin</span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                    {activeChat.users?.map((member) => {
+                      const memberId = (member._id || member.id || member).toString();
+                      const isMe = memberId === currentUserId?.toString();
+                      const isMemberAdmin =
+                        (activeChat.groupAdmin?._id || activeChat.groupAdmin)?.toString() === memberId;
+                      const isOnline = onlineUsers.includes(memberId);
+
+                      return (
+                        <div
+                          key={memberId}
+                          className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="relative">
+                              <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
+                                {member.name?.slice(0, 2).toUpperCase() || 'MB'}
+                              </div>
+                              <span
+                                className={`w-2 h-2 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-800 ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                                  }`}
+                              />
                             </div>
-                            <span
-                              className={`w-2 h-2 rounded-full absolute -bottom-0.5 -right-0.5 border-2 border-white dark:border-slate-800 ${
-                                isOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                              }`}
-                            />
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-900 dark:text-white truncate flex items-center gap-1.5">
+                                <span>{member.name || 'Member'}</span>
+                                {isMe && <span className="text-[10px] text-slate-400 font-normal">(You)</span>}
+                                {isMemberAdmin && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
+                                    Admin
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                {member.email}
+                              </div>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-900 dark:text-white truncate flex items-center gap-1.5">
-                              <span>{member.name || 'Member'}</span>
-                              {isMe && <span className="text-[10px] text-slate-400 font-normal">(You)</span>}
-                              {isMemberAdmin && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
-                                  Admin
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                              {member.email}
-                            </div>
-                          </div>
+
+                          {isGroupAdmin && !isMe && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMember(memberId)}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 text-xs font-bold"
+                            >
+                              <UserMinus className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
-
-                        {isGroupAdmin && !isMe && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMember(memberId)}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 text-xs font-bold"
-                          >
-                            <UserMinus className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={handleLeaveGroup}
-                className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Leave Group</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowGroupInfoModal(false)}
-                className="px-4 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl transition-colors cursor-pointer"
-              >
-                Close
-              </button>
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={handleLeaveGroup}
+                  className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Leave Group</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowGroupInfoModal(false)}
+                  className="px-4 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </ModalPortal>
+        </ModalPortal>
       )}
     </div>
   );

@@ -786,7 +786,6 @@ export async function adminToggleBan(token, userId, status) {
   return data;
 }
 
-// Google OAuth API
 export async function googleAuthLogin({ credential, idToken, googleUser }) {
   const response = await fetch(`${API_BASE_URL}/auth/google`, {
     method: 'POST',
@@ -803,7 +802,6 @@ export async function googleAuthLogin({ credential, idToken, googleUser }) {
   return data;
 }
 
-// 2FA Authentication APIs
 export async function loginWith2FA({ tempToken, otp, email }) {
   const response = await fetch(`${API_BASE_URL}/auth/login-2fa`, {
     method: 'POST',
@@ -898,7 +896,6 @@ export async function disable2fa(token) {
   return data;
 }
 
-// Strict Real-Time Presence API
 export async function getPresenceStatus(token) {
   const response = await fetch(`${API_BASE_URL}/auth/presence`, {
     method: 'GET',
@@ -913,4 +910,3 @@ export async function getPresenceStatus(token) {
   }
   return data;
 }
-

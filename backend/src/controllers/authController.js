@@ -128,7 +128,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // 2FA Check
     if (user.twoFactorEnabled) {
       const otp = crypto.randomInt(100000, 999999).toString();
       const salt = await bcrypt.genSalt(10);
@@ -243,7 +242,6 @@ export const googleAuth = async (req, res) => {
         await user.save();
       }
 
-      // Check 2FA
       if (user.twoFactorEnabled) {
         const otp = crypto.randomInt(100000, 999999).toString();
         const salt = await bcrypt.genSalt(10);
@@ -283,14 +281,14 @@ export const googleAuth = async (req, res) => {
         user: formatUser(user)
       });
     } else {
-      // Create new user directly via Google
+
       const newUser = await User.create({
         name: payload.name || cleanEmail.split('@')[0],
         email: cleanEmail,
         avatar: payload.picture || '',
         googleId: payload.sub || null,
         authProvider: 'google',
-        role: 'user', // Instant user workspace role for Google signups
+        role: 'user',
         status: 'active',
         twoFactorEnabled: false,
         isOnline: true,
@@ -650,7 +648,6 @@ export const getPresenceStatus = async (req, res) => {
     const io = req.app.get('io');
     const onlineMap = req.app.get('onlineUsers') || new Map();
 
-    // Strict validation: prune any dead sockets
     const verifiedOnlineUserIds = [];
     if (io) {
       for (const [userId, socketSet] of onlineMap.entries()) {

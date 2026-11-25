@@ -1,3 +1,5 @@
+import { cookieStorage } from './storage';
+
 export function isPushSupported() {
   return typeof window !== 'undefined' && 'Notification' in window;
 }
@@ -22,9 +24,8 @@ export function sendDesktopNotification(title, options = {}) {
   if (!isPushSupported()) return null;
   if (Notification.permission !== 'granted') return null;
 
-  // Respect user preference unless explicitly forced (e.g., test notification)
   if (!options.force) {
-    const pref = typeof localStorage !== 'undefined' ? localStorage.getItem('mailchat_pref_push_notifications') : null;
+    const pref = cookieStorage.getItem('mailchat_pref_push_notifications');
     if (pref === 'false') return null;
   }
 

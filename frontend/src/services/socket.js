@@ -58,7 +58,6 @@ export const getSocket = () => {
       stopHeartbeat();
     });
 
-    // Window / Tab lifecycle events for strict online/offline accuracy
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', () => {
         if (socket && socket.connected && currentSocketUser) {

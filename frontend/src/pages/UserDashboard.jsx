@@ -1,3 +1,4 @@
+import { cookieStorage } from '../services/storage';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -75,21 +76,21 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   }, [user.name]);
 
   const [isDark, setIsDark] = useState(() => {
-    return localStorage.getItem('mailchat_theme') === 'dark';
+    return cookieStorage.getItem('mailchat_theme') === 'dark';
   });
 
   const [emailNotifications, setEmailNotifications] = useState(() => {
-    const saved = localStorage.getItem('mailchat_pref_email_notifications');
+    const saved = cookieStorage.getItem('mailchat_pref_email_notifications');
     return saved !== null ? saved === 'true' : true;
   });
 
   const [desktopAudioAlerts, setDesktopAudioAlerts] = useState(() => {
-    const saved = localStorage.getItem('mailchat_pref_audio_alerts');
+    const saved = cookieStorage.getItem('mailchat_pref_audio_alerts');
     return saved !== null ? saved === 'true' : true;
   });
 
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(() => {
-    return localStorage.getItem('mailchat_pref_push_notifications') === 'true';
+    return cookieStorage.getItem('mailchat_pref_push_notifications') === 'true';
   });
 
   const [pushPermission, setPushPermission] = useState(() => getPushPermission());
@@ -100,7 +101,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
       setPushPermission(result);
       if (result === 'granted') {
         setPushNotificationsEnabled(true);
-        localStorage.setItem('mailchat_pref_push_notifications', 'true');
+        cookieStorage.setItem('mailchat_pref_push_notifications', 'true');
         showToast('Push notifications enabled successfully', 'success');
         sendDesktopNotification('MailChat Push Notifications', {
           body: 'You will now receive instant desktop notifications for emails, messages, and group activities.'
@@ -111,7 +112,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
     } else {
       const next = !pushNotificationsEnabled;
       setPushNotificationsEnabled(next);
-      localStorage.setItem('mailchat_pref_push_notifications', String(next));
+      cookieStorage.setItem('mailchat_pref_push_notifications', String(next));
       showToast(next ? 'Push notifications turned ON' : 'Push notifications paused');
     }
   };
@@ -119,7 +120,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   const toggleEmailNotifications = () => {
     setEmailNotifications((prev) => {
       const next = !prev;
-      localStorage.setItem('mailchat_pref_email_notifications', String(next));
+      cookieStorage.setItem('mailchat_pref_email_notifications', String(next));
       showToast(next ? 'Email summaries enabled' : 'Email summaries paused');
       return next;
     });
@@ -128,13 +129,12 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   const toggleDesktopAudioAlerts = () => {
     setDesktopAudioAlerts((prev) => {
       const next = !prev;
-      localStorage.setItem('mailchat_pref_audio_alerts', String(next));
+      cookieStorage.setItem('mailchat_pref_audio_alerts', String(next));
       showToast(next ? 'Desktop audio alerts enabled' : 'Desktop audio alerts muted');
       return next;
     });
   };
 
-  // 2FA Management State
   const [twoFactorLoading, setTwoFactorLoading] = useState(false);
   const [show2faSetupModal, setShow2faSetupModal] = useState(false);
   const [twoFactorSetupOtp, setTwoFactorSetupOtp] = useState('');
@@ -151,7 +151,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   }, [twoFactorCooldown]);
 
   const handleStart2faSetup = async () => {
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (!token) return;
     setTwoFactorLoading(true);
     try {
@@ -173,7 +173,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
       showToast('Please enter the full 6-digit verification code', 'error');
       return;
     }
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (!token) return;
 
     setTwoFactorLoading(true);
@@ -194,7 +194,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   };
 
   const handleConfirmDisable2fa = async () => {
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (!token) return;
 
     setTwoFactorLoading(true);
@@ -231,10 +231,10 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
 
     if (perm === 'granted') {
       setPushNotificationsEnabled(true);
-      localStorage.setItem('mailchat_pref_push_notifications', 'true');
+      cookieStorage.setItem('mailchat_pref_push_notifications', 'true');
     }
 
-    const audioPref = localStorage.getItem('mailchat_pref_audio_alerts');
+    const audioPref = cookieStorage.getItem('mailchat_pref_audio_alerts');
     if (audioPref !== 'false') {
       playWhatsAppNotificationSound();
     }
@@ -252,11 +252,11 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
     if (isDark) {
       root.classList.add('dark');
       root.classList.remove('light');
-      localStorage.setItem('mailchat_theme', 'dark');
+      cookieStorage.setItem('mailchat_theme', 'dark');
     } else {
       root.classList.remove('dark');
       root.classList.add('light');
-      localStorage.setItem('mailchat_theme', 'light');
+      cookieStorage.setItem('mailchat_theme', 'light');
     }
   }, [isDark]);
 
@@ -290,7 +290,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   const processedMessageIdsRef = useRef(new Set());
 
   const fetchInitialChatsUnread = useCallback(async () => {
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (!token) return;
     try {
       const data = await fetchChats(token);
@@ -302,7 +302,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   }, []);
 
   const fetchNotificationsData = useCallback(async () => {
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (!token) return;
     try {
       const notifRes = await getNotifications(token);
@@ -337,7 +337,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
       }
 
       if (activeTab !== 'chats') {
-        const audioPref = localStorage.getItem('mailchat_pref_audio_alerts');
+        const audioPref = cookieStorage.getItem('mailchat_pref_audio_alerts');
         if (audioPref !== 'false') playWhatsAppNotificationSound();
         setUnreadChatCount((prev) => prev + 1);
         const senderName = message?.sender?.name || 'Someone';
@@ -351,7 +351,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
     };
 
     const handleNewEmail = (emailData) => {
-      const audioPref = localStorage.getItem('mailchat_pref_audio_alerts');
+      const audioPref = cookieStorage.getItem('mailchat_pref_audio_alerts');
       if (audioPref !== 'false') playWhatsAppNotificationSound();
       setUnreadEmailCount((prev) => prev + 1);
       fetchNotificationsData();
@@ -363,7 +363,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
     };
 
     const handleGroupActivity = ({ title, message }) => {
-      const audioPref = localStorage.getItem('mailchat_pref_audio_alerts');
+      const audioPref = cookieStorage.getItem('mailchat_pref_audio_alerts');
       if (audioPref !== 'false') playWhatsAppNotificationSound();
       fetchNotificationsData();
       sendDesktopNotification(title || 'Group Activity', {
@@ -374,7 +374,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
 
     const handleNewNotification = (notif) => {
       setNotifications((prev) => [notif, ...prev.filter((n) => (n.id || n._id) !== (notif.id || notif._id))]);
-      const audioPref = localStorage.getItem('mailchat_pref_audio_alerts');
+      const audioPref = cookieStorage.getItem('mailchat_pref_audio_alerts');
       if (audioPref !== 'false') playWhatsAppNotificationSound();
       sendDesktopNotification(notif.title, {
         body: notif.message,
@@ -421,7 +421,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
       showToast('Name cannot be empty', 'error');
       return;
     }
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (!token) return;
 
     setUpdatingProfile(true);
@@ -444,7 +444,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   const handleMarkAllNotificationsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
     showToast('All notifications marked as read');
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (token) {
       try {
         await markNotificationsAsRead(token);
@@ -623,7 +623,7 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans overflow-hidden transition-colors duration-200">
+    <div className="flex h-screen h-[100dvh] w-full max-w-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans overflow-hidden transition-colors duration-200">
       <aside className={`
         fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-transform duration-200 md:static md:translate-x-0
         ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -979,7 +979,6 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
                 </form>
               </div>
 
-              {/* TWO-FACTOR AUTHENTICATION (2FA) CARD */}
               <div className="p-5 sm:p-6 lg:p-7 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs w-full flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -994,7 +993,6 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
                   </h2>
                 </div>
 
-                {/* Toggle Switch */}
                 <button
                   type="button"
                   role="switch"
@@ -1175,7 +1173,6 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
         </div>
       )}
 
-      {/* 2FA SETUP MODAL */}
       {show2faSetupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
@@ -1274,7 +1271,6 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
         </div>
       )}
 
-      {/* 2FA DISABLE CONFIRMATION MODAL */}
       {show2faDisableModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 relative">

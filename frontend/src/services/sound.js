@@ -1,7 +1,9 @@
+import { cookieStorage } from './storage';
+
 let lastSoundPlayedAt = 0;
 
 export const playWhatsAppNotificationSound = () => {
-  const audioEnabled = localStorage.getItem('mailchat_pref_audio_alerts') !== 'false';
+  const audioEnabled = cookieStorage.getItem('mailchat_pref_audio_alerts') !== 'false';
   if (!audioEnabled) return;
 
   const nowMs = Date.now();

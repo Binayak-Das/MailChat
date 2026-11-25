@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { cookieStorage } from '../../services/storage';
 import {
   Inbox,
   Star,
@@ -82,7 +83,7 @@ const EMOJI_CATEGORIES = [
 ];
 
 export default function MailModule({ user = {}, showToast = () => {}, onUnreadCountChange }) {
-  const token = localStorage.getItem('mailchat_token');
+  const token = cookieStorage.getItem('mailchat_token');
 
   const [emails, setEmails] = useState([]);
   const [emailsLoading, setEmailsLoading] = useState(true);
@@ -781,7 +782,7 @@ ${emailToForward.body || ''}`;
 
   return (
     <div className="flex-1 h-full min-h-0 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-      
+
       <div className="p-2.5 sm:p-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 bg-slate-50/70 dark:bg-slate-950/60 shrink-0">
         <div className="flex items-center gap-2 max-w-full overflow-x-auto scrollbar-none pb-0.5 md:pb-0">
           <button
@@ -877,9 +878,8 @@ ${emailToForward.body || ''}`;
         </div>
       </div>
 
-      
       <div className="flex-1 flex overflow-hidden">
-        
+
         <div className={`flex flex-col h-full bg-white dark:bg-slate-900 ${selectedEmail ? 'hidden' : 'w-full flex'}`}>
           <div className="px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 bg-slate-50/70 dark:bg-slate-950/40">
             <div className="flex items-center gap-2.5 sm:gap-3">
@@ -1135,11 +1135,10 @@ ${emailToForward.body || ''}`;
           </div>
         </div>
 
-        
         {selectedEmail && (
           <div className="flex-1 flex flex-col h-full bg-white dark:bg-slate-900 overflow-hidden">
             <div className="flex-1 flex flex-col h-full overflow-hidden">
-              
+
               <div className="p-3 sm:p-5 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50/60 dark:bg-slate-950/40">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
                   <div className="flex items-center gap-2 min-w-0 overflow-x-auto scrollbar-none pb-0.5 sm:pb-0">
@@ -1254,7 +1253,6 @@ ${emailToForward.body || ''}`;
                 </h2>
               </div>
 
-              
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-4">
                 {threadMessages.map((msg, idx) => {
                   const isMe = msg.senderEmail?.toLowerCase() === (user.email || '').toLowerCase().trim();
@@ -1452,7 +1450,6 @@ ${emailToForward.body || ''}`;
                   );
                 })}
 
-                
                 {(() => {
                   const otherParty = getOtherParty(selectedEmail);
                   return (
@@ -1631,7 +1628,6 @@ ${emailToForward.body || ''}`;
         )}
       </div>
 
-      
       {composeOpen && (
         <div className="fixed inset-x-3 bottom-3 sm:inset-x-auto sm:right-6 sm:bottom-6 z-50 sm:w-140 max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-5">
           <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between shrink-0 select-none">
@@ -1854,7 +1850,6 @@ ${emailToForward.body || ''}`;
         </div>
       )}
 
-      
       {previewMedia && (
         <div
           onClick={() => setPreviewMedia(null)}

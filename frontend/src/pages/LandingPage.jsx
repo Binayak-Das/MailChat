@@ -4,13 +4,13 @@ import HeroSection from '../components/landing/HeroSection';
 import MetricsBanner from '../components/landing/MetricsBanner';
 import FeaturesGrid from '../components/landing/FeaturesGrid';
 import ArchitectureFlow from '../components/landing/ArchitectureFlow';
-import CTASection from '../components/landing/CTASection';
 import Footer from '../components/landing/Footer';
 import AuthModal from '../components/landing/AuthModal';
+import { cookieStorage } from '../services/storage';
 
 export default function LandingPage({ currentUser, onLogin, onLogout }) {
   const [isDark, setIsDark] = useState(() => {
-    const saved = localStorage.getItem('mailchat_theme');
+    const saved = cookieStorage.getItem('mailchat_theme');
     if (saved) return saved === 'dark';
     return true;
   });
@@ -23,11 +23,11 @@ export default function LandingPage({ currentUser, onLogin, onLogout }) {
     if (isDark) {
       root.classList.add('dark');
       root.classList.remove('light');
-      localStorage.setItem('mailchat_theme', 'dark');
+      cookieStorage.setItem('mailchat_theme', 'dark');
     } else {
       root.classList.remove('dark');
       root.classList.add('light');
-      localStorage.setItem('mailchat_theme', 'light');
+      cookieStorage.setItem('mailchat_theme', 'light');
     }
   }, [isDark]);
 
@@ -44,7 +44,7 @@ export default function LandingPage({ currentUser, onLogin, onLogout }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 selection:bg-blue-600 selection:text-white transition-colors duration-200">
+    <div className="min-h-screen min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 selection:bg-blue-600 selection:text-white transition-colors duration-200">
 
       <Navbar
         isDark={isDark}
@@ -60,14 +60,9 @@ export default function LandingPage({ currentUser, onLogin, onLogout }) {
           onOpenAuthModal={handleOpenAuthModal}
           onScrollToFeatures={scrollToFeatures}
         />
-
         <MetricsBanner />
-
         <FeaturesGrid />
-
         <ArchitectureFlow />
-
-        <CTASection onOpenAuthModal={handleOpenAuthModal} />
       </main>
 
       <Footer />

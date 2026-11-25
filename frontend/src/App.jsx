@@ -3,15 +3,20 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AdminDashboard from './pages/AdminDashboard';
 import UserDashboard from './pages/UserDashboard';
+import TermsPage from './pages/TermsPage';
+import PrivacyPage from './pages/PrivacyPage';
+import CookiePolicyPage from './pages/CookiePolicyPage';
+import CookieBanner from './components/landing/CookieBanner';
 import { getCurrentUser } from './services/api';
 import { disconnectSocket } from './services/socket';
+import { cookieStorage } from './services/storage';
 import { Loader2 } from 'lucide-react';
 
 function App() {
   const navigate = useNavigate();
 
   const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('mailchat_user');
+    const saved = cookieStorage.getItem('mailchat_user');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -25,18 +30,18 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('mailchat_token');
+    const token = cookieStorage.getItem('mailchat_token');
     if (token) {
       getCurrentUser(token)
         .then((res) => {
           if (res.user) {
             setCurrentUser(res.user);
-            localStorage.setItem('mailchat_user', JSON.stringify(res.user));
+            cookieStorage.setItem('mailchat_user', JSON.stringify(res.user));
           }
         })
         .catch(() => {
-          localStorage.removeItem('mailchat_token');
-          localStorage.removeItem('mailchat_user');
+          cookieStorage.removeItem('mailchat_token');
+          cookieStorage.removeItem('mailchat_user');
           setCurrentUser(null);
         })
         .finally(() => {
@@ -48,8 +53,8 @@ function App() {
   }, []);
 
   const handleLogin = (user, token) => {
-    localStorage.setItem('mailchat_token', token);
-    localStorage.setItem('mailchat_user', JSON.stringify(user));
+    cookieStorage.setItem('mailchat_token', token);
+    cookieStorage.setItem('mailchat_user', JSON.stringify(user));
     setCurrentUser(user);
 
     if (user.role === 'admin') {
@@ -60,100 +65,131 @@ function App() {
   };
 
   const handleUserUpdate = (updatedUser) => {
-    localStorage.setItem('mailchat_user', JSON.stringify(updatedUser));
+    cookieStorage.setItem('mailchat_user', JSON.stringify(updatedUser));
     setCurrentUser(updatedUser);
   };
 
   const handleLogout = () => {
     disconnectSocket(true);
-    localStorage.removeItem('mailchat_token');
-    localStorage.removeItem('mailchat_user');
+    cookieStorage.removeItem('mailchat_token');
+    cookieStorage.removeItem('mailchat_user');
     setCurrentUser(null);
     navigate('/');
   };
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <LandingPage
-            currentUser={currentUser}
-            onLogin={handleLogin}
-            onLogout={handleLogout}
-          />
-        }
-      />
+    <>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <LandingPage
+              currentUser={currentUser}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
+            />
+          }
+        />
 
-      <Route
-        path="/admin"
-        element={<Navigate to="/admin/users" replace />}
-      />
-      <Route
-        path="/admin/:module"
-        element={
-          loading ? (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            </div>
-          ) : !currentUser || currentUser.role !== 'admin' ? (
-            <Navigate to="/" replace />
-          ) : (
-            <AdminDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
-          )
-        }
-      />
-      <Route
-        path="/admin/:module/:submodule"
-        element={
-          loading ? (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            </div>
-          ) : !currentUser || currentUser.role !== 'admin' ? (
-            <Navigate to="/" replace />
-          ) : (
-            <AdminDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
-          )
-        }
-      />
+        <Route
+          path="/terms"
+          element={<TermsPage currentUser={currentUser} />}
+        />
+        <Route
+          path="/terms-and-conditions"
+          element={<Navigate to="/terms" replace />}
+        />
 
-      <Route
-        path="/dashboard"
-        element={<Navigate to="/dashboard/inbox" replace />}
-      />
-      <Route
-        path="/dashboard/:module"
-        element={
-          loading ? (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            </div>
-          ) : !currentUser ? (
-            <Navigate to="/" replace />
-          ) : (
-            <UserDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
-          )
-        }
-      />
+        <Route
+          path="/privacy"
+          element={<PrivacyPage currentUser={currentUser} />}
+        />
+        <Route
+          path="/privacy-policy"
+          element={<Navigate to="/privacy" replace />}
+        />
 
-      <Route path="/inbox" element={<Navigate to="/dashboard/inbox" replace />} />
-      <Route path="/chats" element={<Navigate to="/dashboard/chats" replace />} />
-      <Route path="/chat" element={<Navigate to="/dashboard/chats" replace />} />
-      <Route path="/notifications" element={<Navigate to="/dashboard/notifications" replace />} />
-      <Route
-        path="/settings"
-        element={
-          currentUser?.role === 'admin' ? (
-            <Navigate to="/admin/settings" replace />
-          ) : (
-            <Navigate to="/dashboard/settings" replace />
-          )
-        }
-      />
+        <Route
+          path="/cookies"
+          element={<CookiePolicyPage currentUser={currentUser} />}
+        />
+        <Route
+          path="/cookie-policy"
+          element={<Navigate to="/cookies" replace />}
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route
+          path="/admin"
+          element={<Navigate to="/admin/users" replace />}
+        />
+        <Route
+          path="/admin/:module"
+          element={
+            loading ? (
+              <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            ) : !currentUser || currentUser.role !== 'admin' ? (
+              <Navigate to="/" replace />
+            ) : (
+              <AdminDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
+            )
+          }
+        />
+        <Route
+          path="/admin/:module/:submodule"
+          element={
+            loading ? (
+              <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            ) : !currentUser || currentUser.role !== 'admin' ? (
+              <Navigate to="/" replace />
+            ) : (
+              <AdminDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
+            )
+          }
+        />
+
+        <Route
+          path="/dashboard"
+          element={<Navigate to="/dashboard/inbox" replace />}
+        />
+        <Route
+          path="/dashboard/:module"
+          element={
+            loading ? (
+              <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            ) : !currentUser ? (
+              <Navigate to="/" replace />
+            ) : (
+              <UserDashboard user={currentUser} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
+            )
+          }
+        />
+
+        <Route path="/inbox" element={<Navigate to="/dashboard/inbox" replace />} />
+        <Route path="/chats" element={<Navigate to="/dashboard/chats" replace />} />
+        <Route path="/chat" element={<Navigate to="/dashboard/chats" replace />} />
+        <Route path="/notifications" element={<Navigate to="/dashboard/notifications" replace />} />
+        <Route
+          path="/settings"
+          element={
+            currentUser?.role === 'admin' ? (
+              <Navigate to="/admin/settings" replace />
+            ) : (
+              <Navigate to="/dashboard/settings" replace />
+            )
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      <CookieBanner />
+    </>
   );
 }
 

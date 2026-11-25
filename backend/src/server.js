@@ -120,7 +120,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Strict pruning helper for ghost or disconnected sockets
 const pruneDeadSockets = () => {
   let changed = false;
   for (const [userId, socketSet] of onlineUsers.entries()) {
@@ -148,7 +147,6 @@ const pruneDeadSockets = () => {
   }
 };
 
-// Periodically run strict socket verification every 15 seconds
 setInterval(pruneDeadSockets, 15000);
 
 io.on("connection", (socket) => {
@@ -165,7 +163,6 @@ io.on("connection", (socket) => {
     }
     onlineUsers.get(userId).add(socket.id);
 
-    // Update database presence strictly
     const now = new Date();
     await User.findByIdAndUpdate(userId, { isOnline: true, lastSeen: now }).catch(() => {});
 
@@ -211,13 +208,11 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Client requests immediate strict online users list
   socket.on("get_online_users", () => {
     pruneDeadSockets();
     socket.emit("online_users", Array.from(onlineUsers.keys()));
   });
 
-  // Client heartbeat to maintain strict active state
   socket.on("heartbeat", ({ userId } = {}) => {
     const uid = userId || socket.userId;
     if (uid) {
@@ -229,7 +224,6 @@ io.on("connection", (socket) => {
     socket.emit("heartbeat_ack", { timestamp: Date.now() });
   });
 
-  // Client explicitly logs out
   socket.on("user_logout", async (data) => {
     const uid = (data?.userId || socket.userId)?.toString();
     if (uid && onlineUsers.has(uid)) {
@@ -246,7 +240,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Client tab closing / navigating away
   socket.on("user_offline", async (data) => {
     const uid = (data?.userId || socket.userId)?.toString();
     if (uid && onlineUsers.has(uid)) {
@@ -483,7 +476,6 @@ const startServer = async () => {
     await connectDB();
     await seedAdmin();
 
-    // Strict state reset: On startup, ensure all users are marked offline initially
     await User.updateMany({}, { isOnline: false }).catch(() => {});
     onlineUsers.clear();
 
