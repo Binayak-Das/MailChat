@@ -23,8 +23,7 @@ const attachmentSchema = new mongoose.Schema({
 const messageSchema = new mongoose.Schema(
   {
     sender: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
       required: true
     },
     content: {
@@ -40,21 +39,18 @@ const messageSchema = new mongoose.Schema(
     },
     readBy: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        type: String
       }
     ],
     deliveredTo: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        type: String
       }
     ],
     reactions: [
       {
         user: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: 'User'
+          type: String
         },
         emoji: {
           type: String,

@@ -23,8 +23,7 @@ const attachmentSchema = new mongoose.Schema({
 const emailSchema = new mongoose.Schema(
   {
     sender: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
       required: true
     },
     senderName: {
@@ -39,8 +38,7 @@ const emailSchema = new mongoose.Schema(
       trim: true
     },
     recipient: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
       required: true
     },
     recipientName: {

@@ -1,8 +1,7 @@
 import Chat from '../models/Chat.js';
-import User from '../models/User.js';
 import Message from '../models/Message.js';
-import Notification from '../models/Notification.js';
 import { createNotificationAndEmit } from '../utils/notificationHelper.js';
+import { getUserById, getAllUsers, hydrateChats } from '../utils/userStore.js';
 
 export const accessChat = async (req, res) => {
   try {
@@ -29,23 +28,19 @@ export const accessChat = async (req, res) => {
         { users: { $elemMatch: { $eq: userId } } }
       ]
     })
-      .populate('users', '-password')
       .populate({
-        path: 'latestMessage',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar role'
-        }
+        path: 'latestMessage'
       });
 
     if (isChat.length > 0) {
+      const hydrated = await hydrateChats(isChat[0], req.firebaseToken);
       return res.status(200).json({
         success: true,
-        chat: isChat[0]
+        chat: hydrated
       });
     }
 
-    const targetUser = await User.findById(userId).select('-password');
+    const targetUser = await getUserById(userId, req.firebaseToken);
     if (!targetUser) {
       return res.status(404).json({
         success: false,
@@ -56,11 +51,11 @@ export const accessChat = async (req, res) => {
     const chatData = {
       chatName: targetUser.name,
       isGroupChat: false,
-      users: [req.user._id, userId]
+      users: [req.user._id.toString(), userId.toString()]
     };
 
     const createdChat = await Chat.create(chatData);
-    const fullChat = await Chat.findById(createdChat._id).populate('users', '-password');
+    const fullChat = await hydrateChats(createdChat, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io) {
@@ -86,19 +81,15 @@ export const accessChat = async (req, res) => {
 
 export const fetchChats = async (req, res) => {
   try {
-    const chats = await Chat.find({
+    const rawChats = await Chat.find({
       users: { $elemMatch: { $eq: req.user._id } }
     })
-      .populate('users', '-password')
-      .populate('groupAdmin', '-password')
       .populate({
-        path: 'latestMessage',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar role'
-        }
+        path: 'latestMessage'
       })
       .sort({ updatedAt: -1 });
+
+    const chats = await hydrateChats(rawChats, req.firebaseToken);
 
     const chatsWithUnread = await Promise.all(
       chats.map(async (chat) => {
@@ -107,7 +98,7 @@ export const fetchChats = async (req, res) => {
           readBy: { $ne: req.user._id }
         });
         return {
-          ...chat.toObject(),
+          ...chat,
           unreadCount
         };
       })
@@ -128,22 +119,20 @@ export const fetchChats = async (req, res) => {
 
 export const getChatUsers = async (req, res) => {
   try {
-    const searchFilter = req.query.search
-      ? {
-        $or: [
-          { name: { $regex: req.query.search, $options: 'i' } },
-          { email: { $regex: req.query.search, $options: 'i' } }
-        ]
-      }
-      : {};
+    const search = (req.query.search || '').toLowerCase().trim();
+    const allUsers = await getAllUsers(req.firebaseToken);
 
-    const users = await User.find({
-      ...searchFilter,
-      _id: { $ne: req.user._id },
-      role: { $in: ['user', 'admin'] }
-    })
-      .select('name email avatar role status createdAt')
-      .sort({ name: 1 });
+    const users = allUsers
+      .filter((u) => {
+        if (u._id.toString() === req.user._id.toString()) return false;
+        if (!['user', 'admin'].includes(u.role)) return false;
+        if (!search) return true;
+        return (
+          (u.name || '').toLowerCase().includes(search) ||
+          (u.email || '').toLowerCase().includes(search)
+        );
+      })
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     return res.status(200).json({
       success: true,
@@ -195,9 +184,7 @@ export const createGroupChat = async (req, res) => {
       groupDescription: description ? description.trim() : ''
     });
 
-    const fullGroupChat = await Chat.findById(groupChat._id)
-      .populate('users', '-password')
-      .populate('groupAdmin', '-password');
+    const fullGroupChat = await hydrateChats(groupChat, req.firebaseToken);
 
     const io = req.app.get('io');
     const chatIdStr = fullGroupChat._id.toString();
@@ -289,16 +276,8 @@ export const renameGroup = async (req, res) => {
     chat.chatName = chatName.trim();
     await chat.save();
 
-    const updatedChat = await Chat.findById(chatId)
-      .populate('users', '-password')
-      .populate('groupAdmin', '-password')
-      .populate({
-        path: 'latestMessage',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar role'
-        }
-      });
+    const rawUpdated = await Chat.findById(chatId).populate({ path: 'latestMessage' });
+    const updatedChat = await hydrateChats(rawUpdated, req.firebaseToken);
 
     const io = req.app.get('io');
     for (const u of updatedChat.users) {
@@ -381,18 +360,9 @@ export const addToGroup = async (req, res) => {
     chat.users.push(userId);
     await chat.save();
 
-    const updatedChat = await Chat.findById(chatId)
-      .populate('users', '-password')
-      .populate('groupAdmin', '-password')
-      .populate({
-        path: 'latestMessage',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar role'
-        }
-      });
+    const rawUpdated = await Chat.findById(chatId).populate({ path: 'latestMessage' });
+    const updatedChat = await hydrateChats(rawUpdated, req.firebaseToken);
 
-    const addedUser = await User.findById(userId);
     const io = req.app.get('io');
     for (const u of updatedChat.users) {
       const uid = (u._id || u.id || u)?.toString();
@@ -479,16 +449,8 @@ export const removeFromGroup = async (req, res) => {
 
     await chat.save();
 
-    const updatedChat = await Chat.findById(chatId)
-      .populate('users', '-password')
-      .populate('groupAdmin', '-password')
-      .populate({
-        path: 'latestMessage',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar role'
-        }
-      });
+    const rawUpdated = await Chat.findById(chatId).populate({ path: 'latestMessage' });
+    const updatedChat = await hydrateChats(rawUpdated, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io) {

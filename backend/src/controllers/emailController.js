@@ -1,7 +1,7 @@
 import Email from '../models/Email.js';
-import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import { createNotificationAndEmit } from '../utils/notificationHelper.js';
+import { getUserByEmail } from '../utils/userStore.js';
 
 const formatEmailTime = (dateObj) => {
   const d = new Date(dateObj);
@@ -53,7 +53,7 @@ export const sendEmail = async (req, res) => {
 
     const cleanTo = to.toLowerCase().trim();
 
-    const recipientUser = await User.findOne({ email: cleanTo });
+    const recipientUser = await getUserByEmail(cleanTo, req.firebaseToken);
     if (!recipientUser) {
       return res.status(404).json({
         success: false,
@@ -577,7 +577,7 @@ export const checkRecipient = async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: cleanEmail }).select('name email role avatar');
+    const user = await getUserByEmail(cleanEmail, req.firebaseToken);
 
     if (!user) {
       return res.status(200).json({

@@ -1,7 +1,32 @@
 import Report from '../models/Report.js';
-import User from '../models/User.js';
-import Notification from '../models/Notification.js';
 import { createNotificationAndEmit } from '../utils/notificationHelper.js';
+import {
+  getUserById,
+  getAllUsers,
+  getUsersMap,
+  pickUserFields
+} from '../utils/userStore.js';
+
+async function populateReport(reportDoc, idToken) {
+  const report = reportDoc.toObject ? reportDoc.toObject() : reportDoc;
+  const map = await getUsersMap([report.reporter, report.reportedUser], idToken);
+  return {
+    ...report,
+    reporter: pickUserFields(map.get(report.reporter?.toString()), [
+      'name',
+      'email',
+      'avatar',
+      'role'
+    ]) || { _id: report.reporter, name: 'Deleted User', email: '' },
+    reportedUser: pickUserFields(map.get(report.reportedUser?.toString()), [
+      'name',
+      'email',
+      'avatar',
+      'role',
+      'status'
+    ]) || { _id: report.reportedUser, name: 'Deleted User', email: '', status: 'deleted' }
+  };
+}
 
 export const createReport = async (req, res) => {
   try {
@@ -21,7 +46,7 @@ export const createReport = async (req, res) => {
       });
     }
 
-    const reportedUser = await User.findById(reportedUserId);
+    const reportedUser = await getUserById(reportedUserId, req.firebaseToken);
     if (!reportedUser) {
       return res.status(404).json({
         success: false,
@@ -30,17 +55,16 @@ export const createReport = async (req, res) => {
     }
 
     const report = await Report.create({
-      reporter: req.user._id,
-      reportedUser: reportedUserId,
+      reporter: req.user._id.toString(),
+      reportedUser: reportedUserId.toString(),
       reason: reason.trim(),
       details: details ? details.trim() : ''
     });
 
-    const populatedReport = await Report.findById(report._id)
-      .populate('reporter', 'name email avatar role')
-      .populate('reportedUser', 'name email avatar role status');
+    const populatedReport = await populateReport(report, req.firebaseToken);
 
-    const admins = await User.find({ role: 'admin' });
+    const allUsers = await getAllUsers(req.firebaseToken);
+    const admins = allUsers.filter((u) => u.role === 'admin');
     const io = req.app.get('io');
     for (const admin of admins) {
       await createNotificationAndEmit(io, {
@@ -72,10 +96,26 @@ export const getAllReports = async (req, res) => {
     const { status } = req.query;
     const filter = status && status !== 'all' ? { status } : {};
 
-    const reports = await Report.find(filter)
-      .populate('reporter', 'name email avatar role')
-      .populate('reportedUser', 'name email avatar role status')
-      .sort({ createdAt: -1 });
+    const rawReports = await Report.find(filter).sort({ createdAt: -1 }).lean();
+    const userIds = rawReports.flatMap((r) => [r.reporter, r.reportedUser]);
+    const map = await getUsersMap(userIds, req.firebaseToken);
+
+    const reports = rawReports.map((r) => ({
+      ...r,
+      reporter: pickUserFields(map.get(r.reporter?.toString()), [
+        'name',
+        'email',
+        'avatar',
+        'role'
+      ]) || { _id: r.reporter, name: 'Deleted User', email: '' },
+      reportedUser: pickUserFields(map.get(r.reportedUser?.toString()), [
+        'name',
+        'email',
+        'avatar',
+        'role',
+        'status'
+      ]) || { _id: r.reportedUser, name: 'Deleted User', email: '', status: 'deleted' }
+    }));
 
     return res.status(200).json({
       success: true,
@@ -109,9 +149,7 @@ export const updateReportStatus = async (req, res) => {
 
     await report.save();
 
-    const updated = await Report.findById(reportId)
-      .populate('reporter', 'name email avatar role')
-      .populate('reportedUser', 'name email avatar role status');
+    const updated = await populateReport(report, req.firebaseToken);
 
     return res.status(200).json({
       success: true,

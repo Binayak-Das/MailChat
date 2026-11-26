@@ -1,16 +1,27 @@
-import User from '../models/User.js';
 import Email from '../models/Email.js';
 import Message from '../models/Message.js';
 import Chat from '../models/Chat.js';
 import Report from '../models/Report.js';
+import {
+  getAllUsers,
+  getUserById,
+  updateUser,
+  deleteUser as deleteFirebaseUser,
+  getUsersMap,
+  pickUserFields,
+  formatUser
+} from '../utils/userStore.js';
 
 export const getPlatformActivity = async (req, res) => {
   try {
-    const totalUsers = await User.countDocuments();
-    const activeUsers = await User.countDocuments({ role: { $in: ['user', 'admin'] }, status: { $ne: 'banned' } });
-    const pendingUsers = await User.countDocuments({ role: 'pending' });
-    const adminUsers = await User.countDocuments({ role: 'admin' });
-    const bannedUsers = await User.countDocuments({ status: 'banned' });
+    const allUsers = await getAllUsers(req.firebaseToken);
+    const totalUsers = allUsers.length;
+    const activeUsers = allUsers.filter(
+      (u) => ['user', 'admin'].includes(u.role) && u.status !== 'banned'
+    ).length;
+    const pendingUsers = allUsers.filter((u) => u.role === 'pending').length;
+    const adminUsers = allUsers.filter((u) => u.role === 'admin').length;
+    const bannedUsers = allUsers.filter((u) => u.status === 'banned').length;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -31,16 +42,32 @@ export const getPlatformActivity = async (req, res) => {
     const onlineMap = req.app.get('onlineUsers');
     const onlineUsersCount = onlineMap ? onlineMap.size : 0;
 
-    const recentUsers = await User.find()
-      .select('name email role status createdAt avatar')
-      .sort({ createdAt: -1 })
-      .limit(8);
+    const recentUsers = allUsers.slice(0, 8).map((u) =>
+      pickUserFields(u, ['name', 'email', 'role', 'status', 'createdAt', 'avatar'])
+    );
 
-    const recentReports = await Report.find()
-      .populate('reporter', 'name email')
-      .populate('reportedUser', 'name email status')
-      .sort({ createdAt: -1 })
-      .limit(6);
+    const rawReports = await Report.find().sort({ createdAt: -1 }).limit(6).lean();
+    const reportUserIds = rawReports.flatMap((r) => [r.reporter, r.reportedUser]);
+    const usersMap = await getUsersMap(reportUserIds, req.firebaseToken);
+
+    const recentReports = rawReports.map((r) => ({
+      ...r,
+      reporter: pickUserFields(usersMap.get(r.reporter?.toString()), ['name', 'email']) || {
+        _id: r.reporter,
+        name: 'Deleted User',
+        email: ''
+      },
+      reportedUser: pickUserFields(usersMap.get(r.reportedUser?.toString()), [
+        'name',
+        'email',
+        'status'
+      ]) || {
+        _id: r.reportedUser,
+        name: 'Deleted User',
+        email: '',
+        status: 'deleted'
+      }
+    }));
 
     const systemHealth = {
       status: 'operational',
@@ -92,7 +119,7 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
+    const user = await getUserById(userId, req.firebaseToken);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -100,7 +127,7 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    await User.findByIdAndDelete(userId);
+    await deleteFirebaseUser(userId, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io) {
@@ -138,7 +165,7 @@ export const toggleUserBan = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
+    const user = await updateUser(userId, { status }, req.firebaseToken);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -146,36 +173,16 @@ export const toggleUserBan = async (req, res) => {
       });
     }
 
-    user.status = status;
-    await user.save();
-
+    const formatted = formatUser(user);
     const io = req.app.get('io');
     if (io) {
-      io.emit('user_updated', {
-        id: user._id,
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        avatar: user.avatar,
-        createdAt: user.createdAt
-      });
+      io.emit('user_updated', formatted);
     }
 
     return res.status(200).json({
       success: true,
       message: `User status changed to ${status}`,
-      user: {
-        id: user._id,
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        avatar: user.avatar,
-        createdAt: user.createdAt
-      }
+      user: formatted
     });
   } catch (error) {
     return res.status(500).json({

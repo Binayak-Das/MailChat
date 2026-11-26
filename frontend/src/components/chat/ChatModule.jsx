@@ -797,7 +797,32 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
       isTypingRef.current = false;
     }
 
-    setSendingMessage(true);
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const optimisticMsg = {
+      _id: tempId,
+      id: tempId,
+      sender: {
+        _id: currentUserId,
+        id: currentUserId,
+        name: user?.name || 'You',
+        email: user?.email || '',
+        avatar: user?.avatar || '',
+        role: user?.role || 'user'
+      },
+      content,
+      attachments: outgoingAttachments,
+      chat: chatId,
+      replyTo: replyingTo || null,
+      readBy: [currentUserId],
+      deliveredTo: [],
+      reactions: [],
+      createdAt: new Date().toISOString(),
+      isOptimistic: true
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(() => scrollToBottom(), 20);
+
     try {
       const data = await sendMessage(token, {
         chatId,
@@ -809,10 +834,13 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
       if (data.message) {
         const newMsgId = (data.message._id || data.message.id)?.toString();
         setMessages((prev) => {
-          if (prev.some((m) => (m._id || m.id)?.toString() === newMsgId)) return prev;
-          return [...prev, data.message];
+          const withoutTemp = prev.filter((m) => (m._id || m.id) !== tempId);
+          if (withoutTemp.some((m) => (m._id || m.id)?.toString() === newMsgId)) {
+            return withoutTemp;
+          }
+          return [...withoutTemp, data.message];
         });
-        setTimeout(() => scrollToBottom(), 50);
+        setTimeout(() => scrollToBottom(), 20);
 
         setChats((prevChats) => {
           const chatIndex = prevChats.findIndex((c) => (c._id || c.id) === chatId);
@@ -829,10 +857,9 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
         });
       }
     } catch (err) {
+      setMessages((prev) => prev.filter((m) => (m._id || m.id) !== tempId));
       console.error('Failed to send message:', err);
       showToast?.(err.message || 'Failed to send message', 'error');
-    } finally {
-      setSendingMessage(false);
     }
   };
 

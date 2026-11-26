@@ -1,16 +1,26 @@
-import User from '../models/User.js';
+import {
+  getUserById,
+  updateUser,
+  getAllUsers,
+  getUsersMap,
+  pickUserFields
+} from '../utils/userStore.js';
+
+const CONTACT_FIELDS = ['name', 'email', 'avatar', 'role', 'status', 'createdAt'];
 
 export const getContacts = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate({
-      path: 'contacts',
-      select: 'name email avatar role status createdAt'
-    });
+    const user = await getUserById(req.user._id, req.firebaseToken);
+    const contactIds = user?.contacts || [];
+    const map = await getUsersMap(contactIds, req.firebaseToken);
+    const contacts = contactIds
+      .map((id) => pickUserFields(map.get(id.toString()), CONTACT_FIELDS))
+      .filter(Boolean);
 
     return res.status(200).json({
       success: true,
-      count: user.contacts?.length || 0,
-      contacts: user.contacts || []
+      count: contacts.length,
+      contacts
     });
   } catch (error) {
     return res.status(500).json({
@@ -37,7 +47,7 @@ export const addContact = async (req, res) => {
       });
     }
 
-    const targetUser = await User.findById(userId);
+    const targetUser = await getUserById(userId, req.firebaseToken);
     if (!targetUser) {
       return res.status(404).json({
         success: false,
@@ -45,19 +55,21 @@ export const addContact = async (req, res) => {
       });
     }
 
-    await User.findByIdAndUpdate(req.user._id, {
-      $addToSet: { contacts: userId }
-    });
+    const current = await getUserById(req.user._id, req.firebaseToken);
+    const nextContacts = Array.from(
+      new Set([...(current?.contacts || []).map(String), userId.toString()])
+    );
+    await updateUser(req.user._id, { contacts: nextContacts }, req.firebaseToken);
 
-    const updatedUser = await User.findById(req.user._id).populate({
-      path: 'contacts',
-      select: 'name email avatar role status createdAt'
-    });
+    const map = await getUsersMap(nextContacts, req.firebaseToken);
+    const contacts = nextContacts
+      .map((id) => pickUserFields(map.get(id), CONTACT_FIELDS))
+      .filter(Boolean);
 
     return res.status(200).json({
       success: true,
       message: `${targetUser.name} added to your contacts`,
-      contacts: updatedUser.contacts
+      contacts
     });
   } catch (error) {
     return res.status(500).json({
@@ -70,20 +82,22 @@ export const addContact = async (req, res) => {
 export const removeContact = async (req, res) => {
   try {
     const { userId } = req.params;
+    const current = await getUserById(req.user._id, req.firebaseToken);
+    const nextContacts = (current?.contacts || [])
+      .map(String)
+      .filter((id) => id !== userId.toString());
 
-    await User.findByIdAndUpdate(req.user._id, {
-      $pull: { contacts: userId }
-    });
+    await updateUser(req.user._id, { contacts: nextContacts }, req.firebaseToken);
 
-    const updatedUser = await User.findById(req.user._id).populate({
-      path: 'contacts',
-      select: 'name email avatar role status createdAt'
-    });
+    const map = await getUsersMap(nextContacts, req.firebaseToken);
+    const contacts = nextContacts
+      .map((id) => pickUserFields(map.get(id), CONTACT_FIELDS))
+      .filter(Boolean);
 
     return res.status(200).json({
       success: true,
       message: 'Contact removed',
-      contacts: updatedUser.contacts
+      contacts
     });
   } catch (error) {
     return res.status(500).json({
@@ -96,29 +110,27 @@ export const removeContact = async (req, res) => {
 export const searchContacts = async (req, res) => {
   try {
     const { query } = req.query;
-    const searchFilter = query
-      ? {
-        $or: [
-          { name: { $regex: query, $options: 'i' } },
-          { email: { $regex: query, $options: 'i' } }
-        ]
-      }
-      : {};
+    const q = (query || '').toLowerCase().trim();
 
-    const currentUser = await User.findById(req.user._id);
-    const contactsSet = new Set((currentUser.contacts || []).map((id) => id.toString()));
-    const blockedSet = new Set((currentUser.blockedUsers || []).map((id) => id.toString()));
+    const currentUser = await getUserById(req.user._id, req.firebaseToken);
+    const contactsSet = new Set((currentUser?.contacts || []).map((id) => id.toString()));
+    const blockedSet = new Set((currentUser?.blockedUsers || []).map((id) => id.toString()));
 
-    const users = await User.find({
-      ...searchFilter,
-      _id: { $ne: req.user._id },
-      role: { $in: ['user', 'admin'] }
-    })
-      .select('name email avatar role status createdAt')
-      .sort({ name: 1 })
-      .limit(30);
+    const allUsers = await getAllUsers(req.firebaseToken);
+    const filtered = allUsers
+      .filter((u) => {
+        if (u._id.toString() === req.user._id.toString()) return false;
+        if (!['user', 'admin'].includes(u.role)) return false;
+        if (!q) return true;
+        return (
+          (u.name || '').toLowerCase().includes(q) ||
+          (u.email || '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .slice(0, 30);
 
-    const formattedUsers = users.map((u) => ({
+    const formattedUsers = filtered.map((u) => ({
       _id: u._id,
       id: u._id,
       name: u.name,
@@ -145,15 +157,17 @@ export const searchContacts = async (req, res) => {
 
 export const getBlockedUsers = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate({
-      path: 'blockedUsers',
-      select: 'name email avatar role status createdAt'
-    });
+    const user = await getUserById(req.user._id, req.firebaseToken);
+    const blockedIds = user?.blockedUsers || [];
+    const map = await getUsersMap(blockedIds, req.firebaseToken);
+    const blockedUsers = blockedIds
+      .map((id) => pickUserFields(map.get(id.toString()), CONTACT_FIELDS))
+      .filter(Boolean);
 
     return res.status(200).json({
       success: true,
-      count: user.blockedUsers?.length || 0,
-      blockedUsers: user.blockedUsers || []
+      count: blockedUsers.length,
+      blockedUsers
     });
   } catch (error) {
     return res.status(500).json({
@@ -180,7 +194,7 @@ export const blockUser = async (req, res) => {
       });
     }
 
-    const targetUser = await User.findById(userId);
+    const targetUser = await getUserById(userId, req.firebaseToken);
     if (!targetUser) {
       return res.status(404).json({
         success: false,
@@ -188,9 +202,11 @@ export const blockUser = async (req, res) => {
       });
     }
 
-    await User.findByIdAndUpdate(req.user._id, {
-      $addToSet: { blockedUsers: userId }
-    });
+    const current = await getUserById(req.user._id, req.firebaseToken);
+    const nextBlocked = Array.from(
+      new Set([...(current?.blockedUsers || []).map(String), userId.toString()])
+    );
+    await updateUser(req.user._id, { blockedUsers: nextBlocked }, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io) {
@@ -227,9 +243,11 @@ export const unblockUser = async (req, res) => {
       });
     }
 
-    await User.findByIdAndUpdate(req.user._id, {
-      $pull: { blockedUsers: userId }
-    });
+    const current = await getUserById(req.user._id, req.firebaseToken);
+    const nextBlocked = (current?.blockedUsers || [])
+      .map(String)
+      .filter((id) => id !== userId.toString());
+    await updateUser(req.user._id, { blockedUsers: nextBlocked }, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io) {

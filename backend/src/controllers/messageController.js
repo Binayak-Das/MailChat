@@ -1,6 +1,6 @@
 import Message from '../models/Message.js';
 import Chat from '../models/Chat.js';
-import User from '../models/User.js';
+import { getUserById, hydrateMessages } from '../utils/userStore.js';
 
 export const sendMessage = async (req, res) => {
   try {
@@ -49,10 +49,10 @@ export const sendMessage = async (req, res) => {
         (u) => u.toString() !== req.user._id.toString()
       );
       if (partnerId) {
-        const currentUser = await User.findById(req.user._id);
-        const partnerUser = await User.findById(partnerId);
+        const currentUser = await getUserById(req.user._id, req.firebaseToken);
+        const partnerUser = await getUserById(partnerId, req.firebaseToken);
 
-        const hasBlockedPartner = currentUser.blockedUsers?.some(
+        const hasBlockedPartner = currentUser?.blockedUsers?.some(
           (b) => b.toString() === partnerId.toString()
         );
         const isBlockedByPartner = partnerUser?.blockedUsers?.some(
@@ -97,22 +97,10 @@ export const sendMessage = async (req, res) => {
     chat.latestMessage = newMessage._id;
     await chat.save();
 
-    const fullMessage = await Message.findById(newMessage._id)
-      .populate('sender', 'name email avatar role')
-      .populate({
-        path: 'replyTo',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar'
-        }
-      })
-      .populate({
-        path: 'chat',
-        populate: {
-          path: 'users',
-          select: 'name email avatar role'
-        }
-      });
+    const rawMessage = await Message.findById(newMessage._id)
+      .populate({ path: 'replyTo' })
+      .populate({ path: 'chat' });
+    const fullMessage = await hydrateMessages(rawMessage, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io && fullMessage.chat) {
@@ -169,17 +157,10 @@ export const allMessages = async (req, res) => {
       });
     }
 
-    const messages = await Message.find({ chat: chatId })
-      .populate('sender', 'name email avatar role')
-      .populate('reactions.user', 'name avatar')
-      .populate({
-        path: 'replyTo',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar'
-        }
-      })
+    const rawMessages = await Message.find({ chat: chatId })
+      .populate({ path: 'replyTo' })
       .sort({ createdAt: 1 });
+    const messages = await hydrateMessages(rawMessages, req.firebaseToken);
 
     await Message.updateMany(
       { chat: chatId, readBy: { $ne: req.user._id } },
@@ -251,16 +232,8 @@ export const editMessage = async (req, res) => {
     message.editedAt = new Date();
     await message.save();
 
-    const updatedMessage = await Message.findById(messageId)
-      .populate('sender', 'name email avatar role')
-      .populate('reactions.user', 'name avatar')
-      .populate({
-        path: 'replyTo',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar'
-        }
-      });
+    const rawUpdated = await Message.findById(messageId).populate({ path: 'replyTo' });
+    const updatedMessage = await hydrateMessages(rawUpdated, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io && message.chat) {
@@ -390,15 +363,8 @@ export const forwardMessage = async (req, res) => {
       chat.latestMessage = newMsg._id;
       await chat.save();
 
-      const populatedMsg = await Message.findById(newMsg._id)
-        .populate('sender', 'name email avatar role')
-        .populate({
-          path: 'chat',
-          populate: {
-            path: 'users',
-            select: 'name email avatar role'
-          }
-        });
+      const rawPopulated = await Message.findById(newMsg._id).populate({ path: 'chat' });
+      const populatedMsg = await hydrateMessages(rawPopulated, req.firebaseToken);
 
       forwardedMessages.push(populatedMsg);
 
@@ -549,16 +515,8 @@ export const toggleReaction = async (req, res) => {
 
     await message.save();
 
-    const updatedMessage = await Message.findById(messageId)
-      .populate('sender', 'name email avatar role')
-      .populate('reactions.user', 'name avatar')
-      .populate({
-        path: 'replyTo',
-        populate: {
-          path: 'sender',
-          select: 'name email avatar'
-        }
-      });
+    const rawUpdated = await Message.findById(messageId).populate({ path: 'replyTo' });
+    const updatedMessage = await hydrateMessages(rawUpdated, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io && message.chat) {

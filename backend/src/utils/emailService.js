@@ -428,7 +428,7 @@ export async function sendTwoFactorOtpEmail(to, otp, action = 'Login Verificatio
     const info = await transporter.sendMail({
       from: fromAddress,
       to,
-      subject: `MailChat - Your Two-Factor Verification Code: ${otp}`,
+      subject: `MailChat - Two-Factor Verification Code:`,
       text: `Your MailChat 2FA verification code for ${action} is: ${otp}. Valid for 10 minutes.`,
       html
     });

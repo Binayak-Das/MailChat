@@ -1,11 +1,20 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { OAuth2Client } from 'google-auth-library';
-import User from '../models/User.js';
 import Otp from '../models/Otp.js';
 import { sendPasswordResetOtpEmail, sendTwoFactorOtpEmail } from '../utils/emailService.js';
 import { createNotificationAndEmit } from '../utils/notificationHelper.js';
+import { verifyFirebaseIdToken } from '../utils/firebaseAuth.js';
+import {
+  formatUser,
+  getUserById,
+  getUserByEmail,
+  getAllUsers,
+  upsertUser,
+  updateUser
+} from '../utils/userStore.js';
+
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@gmail.com').toLowerCase().trim();
 
 const generateToken = (userId) => {
   return jwt.sign(
@@ -17,207 +26,57 @@ const generateToken = (userId) => {
   );
 };
 
-const formatUser = (user) => ({
-  id: user._id,
-  _id: user._id,
-  name: user.name,
-  email: user.email,
-  role: user.role,
-  status: user.status || 'active',
-  avatar: user.avatar,
-  googleId: user.googleId || null,
-  authProvider: user.authProvider || 'local',
-  twoFactorEnabled: !!user.twoFactorEnabled,
-  twoFactorMethod: user.twoFactorMethod || 'email',
-  isOnline: !!user.isOnline,
-  lastSeen: user.lastSeen || user.updatedAt,
-  contacts: user.contacts || [],
-  blockedUsers: user.blockedUsers || [],
-  createdAt: user.createdAt
-});
-
-export const register = async (req, res) => {
+export const firebaseAuth = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const authHeader = req.headers.authorization;
+    const headerToken = authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : null;
+    const { idToken: bodyToken, name, mode, email: bodyEmail } = req.body || {};
+    const idToken = bodyToken || headerToken;
 
-    if (!name || !email || !password) {
+    if (!idToken) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide full name, email, and password'
+        message: 'Firebase ID token is required'
       });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({
+    let fbUser;
+    try {
+      fbUser = await verifyFirebaseIdToken(idToken);
+    } catch (verifyErr) {
+      return res.status(401).json({
         success: false,
-        message: 'Password must be at least 6 characters long'
+        message: verifyErr.message || 'Invalid or expired Firebase token'
       });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
-    const existingUser = await User.findOne({ email: cleanEmail });
-    if (existingUser) {
+    const resolvedEmail = fbUser.email || bodyEmail || '';
+    if (!resolvedEmail) {
       return res.status(400).json({
         success: false,
-        message: 'An account with this email address already exists'
+        message: 'Account already exists'
       });
     }
 
-    const user = await User.create({
-      name: name.trim(),
-      email: cleanEmail,
-      password,
-      role: 'pending',
-      status: 'active',
-      authProvider: 'local',
-      twoFactorEnabled: false,
-      isOnline: false,
-      lastSeen: new Date()
-    });
+    const cleanEmail = resolvedEmail.toLowerCase().trim();
+    const isGoogleProvider = fbUser.signInProvider === 'google.com';
+    const isAdminEmail = cleanEmail === ADMIN_EMAIL;
 
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('user_registered', formatUser(user));
-    }
-
-    return res.status(201).json({
-      success: true,
-      user: formatUser(user)
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Server error during registration'
-    });
-  }
-};
-
-export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide both email and password'
-      });
-    }
-
-    const cleanEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: cleanEmail }).select('+password');
-
+    let user = await getUserById(fbUser.uid, idToken);
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      user = await getUserByEmail(cleanEmail, idToken);
     }
-
-    if (user.status === 'banned') {
-      return res.status(403).json({
-        success: false,
-        message: 'Your account has been suspended by an administrator. Please contact support.'
-      });
-    }
-
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
-    }
-
-    if (user.twoFactorEnabled) {
-      const otp = crypto.randomInt(100000, 999999).toString();
-      const salt = await bcrypt.genSalt(10);
-      const hashedOtp = await bcrypt.hash(otp, salt);
-
-      await Otp.deleteMany({ email: cleanEmail, purpose: '2fa_login' });
-      await Otp.create({
-        email: cleanEmail,
-        otp: hashedOtp,
-        purpose: '2fa_login',
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000)
-      });
-
-      await sendTwoFactorOtpEmail(user.email, otp, 'Account Sign-In Verification');
-
-      const tempToken = jwt.sign(
-        { id: user._id, email: user.email, purpose: '2fa_login' },
-        process.env.JWT_SECRET || 'mailchat_super_secret_jwt_key_2026_secure',
-        { expiresIn: '10m' }
-      );
-
-      return res.status(200).json({
-        success: true,
-        require2FA: true,
-        email: user.email,
-        tempToken,
-        message: `Two-factor authentication code sent to ${user.email}.`
-      });
-    }
-
-    const token = generateToken(user._id);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Authentication successful! Welcome back.',
-      token,
-      user: formatUser(user)
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Server error during authentication'
-    });
-  }
-};
-
-export const googleAuth = async (req, res) => {
-  try {
-    const { credential, idToken, googleUser } = req.body;
-    let payload = null;
-
-    if (credential || idToken) {
-      const rawToken = credential || idToken;
-      const googleClientId = process.env.GOOGLE_CLIENT_ID;
-
-      if (googleClientId) {
-        try {
-          const client = new OAuth2Client(googleClientId);
-          const ticket = await client.verifyIdToken({
-            idToken: rawToken,
-            audience: googleClientId,
-          });
-          payload = ticket.getPayload();
-        } catch (verErr) {
-          console.warn('Google client verification notice:', verErr.message);
-          payload = jwt.decode(rawToken);
-        }
-      } else {
-        payload = jwt.decode(rawToken);
-      }
-    } else if (googleUser && googleUser.email) {
-      payload = {
-        sub: googleUser.id || googleUser.sub || `google_${Date.now()}`,
-        email: googleUser.email,
-        name: googleUser.name,
-        picture: googleUser.picture || googleUser.avatar
-      };
-    }
-
-    if (!payload || !payload.email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Unable to verify Google identity. Please try again.'
-      });
-    }
-
-    const cleanEmail = payload.email.toLowerCase().trim();
-    let user = await User.findOne({ email: cleanEmail }).select('+password');
 
     if (user) {
+      if (isGoogleProvider && user.authProvider !== 'google') {
+        return res.status(409).json({
+          success: false,
+          message: 'An account with this email address already exists. Please sign in with your email and password instead.'
+        });
+      }
+
       if (user.status === 'banned') {
         return res.status(403).json({
           success: false,
@@ -225,24 +84,25 @@ export const googleAuth = async (req, res) => {
         });
       }
 
-      let updated = false;
-      if (!user.googleId && payload.sub) {
-        user.googleId = payload.sub;
-        updated = true;
+      const updates = {};
+      if (!user.avatar && fbUser.picture) {
+        updates.avatar = fbUser.picture;
       }
-      if (!user.avatar && payload.picture) {
-        user.avatar = payload.picture;
-        updated = true;
+      if (name && name.trim() && (!user.name || user.name === cleanEmail.split('@')[0])) {
+        updates.name = name.trim();
       }
-      if (user.authProvider !== 'google' && !user.password) {
-        user.authProvider = 'google';
-        updated = true;
+      if (isAdminEmail && user.role !== 'admin') {
+        updates.role = 'admin';
       }
-      if (updated) {
-        await user.save();
+      if (isGoogleProvider && user.authProvider !== 'google') {
+        updates.authProvider = 'google';
       }
 
-      if (user.twoFactorEnabled) {
+      if (mode !== 'register' && user.twoFactorEnabled) {
+        if (Object.keys(updates).length > 0) {
+          user = await upsertUser(user.id, updates, idToken);
+        }
+
         const otp = crypto.randomInt(100000, 999999).toString();
         const salt = await bcrypt.genSalt(10);
         const hashedOtp = await bcrypt.hash(otp, salt);
@@ -255,7 +115,7 @@ export const googleAuth = async (req, res) => {
           expiresAt: new Date(Date.now() + 10 * 60 * 1000)
         });
 
-        await sendTwoFactorOtpEmail(user.email, otp, 'Google Sign-In Verification');
+        await sendTwoFactorOtpEmail(user.email, otp, 'Account Sign-In Verification');
 
         const tempToken = jwt.sign(
           { id: user._id, email: user.email, purpose: '2fa_login' },
@@ -272,51 +132,72 @@ export const googleAuth = async (req, res) => {
         });
       }
 
-      const token = generateToken(user._id);
+      if (mode !== 'register') {
+        updates.isOnline = true;
+        updates.lastSeen = new Date().toISOString();
+      }
+      if (Object.keys(updates).length > 0) {
+        user = await upsertUser(user.id, updates, idToken);
+      }
 
       return res.status(200).json({
         success: true,
-        message: 'Google Sign-In successful!',
-        token,
+        message: isGoogleProvider ? 'Google Sign-In successful!' : 'Authentication successful! Welcome back.',
+        token: idToken,
         user: formatUser(user)
       });
-    } else {
+    }
 
-      const newUser = await User.create({
-        name: payload.name || cleanEmail.split('@')[0],
+    const newUser = await upsertUser(
+      fbUser.uid,
+      {
+        uid: fbUser.uid,
+        name: (name && name.trim()) || fbUser.name || cleanEmail.split('@')[0],
         email: cleanEmail,
-        avatar: payload.picture || '',
-        googleId: payload.sub || null,
-        authProvider: 'google',
-        role: 'user',
+        firebaseUid: fbUser.uid,
+        avatar: fbUser.picture || '',
+        authProvider: isGoogleProvider ? 'google' : 'firebase',
+        role: isAdminEmail ? 'admin' : isGoogleProvider ? 'user' : 'pending',
         status: 'active',
         twoFactorEnabled: false,
-        isOnline: true,
-        lastSeen: new Date()
-      });
+        isOnline: mode !== 'register',
+        lastSeen: new Date().toISOString(),
+        contacts: [],
+        blockedUsers: []
+      },
+      idToken
+    );
 
-      const io = req.app.get('io');
-      if (io) {
-        io.emit('user_registered', formatUser(newUser));
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user_registered', formatUser(newUser));
+      if (isGoogleProvider) {
         io.emit('new_user', formatUser(newUser));
       }
-
-      const token = generateToken(newUser._id);
-
-      return res.status(201).json({
-        success: true,
-        message: 'Account created with Google!',
-        token,
-        user: formatUser(newUser)
-      });
     }
+
+    return res.status(201).json({
+      success: true,
+      message: isGoogleProvider
+        ? 'Account created with Google!'
+        : 'Account registered successfully! Please sign in.',
+      token: idToken,
+      user: formatUser(newUser)
+    });
   } catch (error) {
-    console.error('Google Auth Controller Error:', error);
+    console.error('Firebase Auth Controller Error:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Server error during Google authentication'
+      message: error.message || 'Server error during Firebase authentication'
     });
   }
+};
+
+export const login = async (req, res) => {
+  return res.status(410).json({
+    success: false,
+    message: 'Direct password login is disabled. Please sign in with Firebase.'
+  });
 };
 
 export const loginWith2FA = async (req, res) => {
@@ -404,7 +285,7 @@ export const loginWith2FA = async (req, res) => {
 
     await Otp.deleteOne({ _id: otpRecord._id });
 
-    const user = userId ? await User.findById(userId) : await User.findOne({ email: cleanEmail });
+    let user = userId ? await getUserById(userId) : await getUserByEmail(cleanEmail);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -412,9 +293,10 @@ export const loginWith2FA = async (req, res) => {
       });
     }
 
-    user.isOnline = true;
-    user.lastSeen = new Date();
-    await user.save();
+    user = await updateUser(user._id, {
+      isOnline: true,
+      lastSeen: new Date().toISOString()
+    });
 
     const token = generateToken(user._id);
 
@@ -462,7 +344,7 @@ export const resend2faLoginOtp = async (req, res) => {
     }
 
     const cleanEmail = targetEmail.toLowerCase().trim();
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await getUserByEmail(cleanEmail);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -498,7 +380,7 @@ export const resend2faLoginOtp = async (req, res) => {
 
 export const send2faSetupOtp = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await getUserById(req.user._id, req.firebaseToken);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -539,7 +421,7 @@ export const enable2fa = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user._id);
+    let user = await getUserById(req.user._id, req.firebaseToken);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -574,8 +456,7 @@ export const enable2fa = async (req, res) => {
 
     await Otp.deleteOne({ _id: otpRecord._id });
 
-    user.twoFactorEnabled = true;
-    await user.save();
+    user = await updateUser(user._id, { twoFactorEnabled: true }, req.firebaseToken);
 
     const io = req.app.get('io');
     if (io) {
@@ -598,13 +479,10 @@ export const enable2fa = async (req, res) => {
 
 export const disable2fa = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await updateUser(req.user._id, { twoFactorEnabled: false }, req.firebaseToken);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-
-    user.twoFactorEnabled = false;
-    await user.save();
 
     const io = req.app.get('io');
     if (io) {
@@ -627,7 +505,7 @@ export const disable2fa = async (req, res) => {
 
 export const get2faStatus = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await getUserById(req.user._id, req.firebaseToken);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -635,7 +513,7 @@ export const get2faStatus = async (req, res) => {
       success: true,
       twoFactorEnabled: !!user.twoFactorEnabled
     });
-  } catch (error) {
+  } catch {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve 2FA status'
@@ -659,14 +537,14 @@ export const getPresenceStatus = async (req, res) => {
         }
         if (socketSet.size === 0) {
           onlineMap.delete(userId);
-          User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: new Date() }).exec();
+          updateUser(userId, { isOnline: false, lastSeen: new Date().toISOString() }).catch(() => { });
         } else {
           verifiedOnlineUserIds.push(userId);
         }
       }
     }
 
-    const allUsers = await User.find().select('_id isOnline lastSeen updatedAt');
+    const allUsers = await getAllUsers(req.firebaseToken);
     const userStatuses = {};
     for (const u of allUsers) {
       const uid = u._id.toString();
@@ -692,7 +570,7 @@ export const getPresenceStatus = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await getUserById(req.user.id, req.firebaseToken);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -703,7 +581,7 @@ export const getMe = async (req, res) => {
       success: true,
       user: formatUser(user)
     });
-  } catch (error) {
+  } catch {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve user profile'
@@ -729,20 +607,18 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user._id);
+    const updates = { name: name.trim() };
+    if (avatar !== undefined) {
+      updates.avatar = avatar;
+    }
+
+    const user = await updateUser(req.user._id, updates, req.firebaseToken);
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User account not found'
       });
     }
-
-    user.name = name.trim();
-    if (avatar !== undefined) {
-      user.avatar = avatar;
-    }
-
-    await user.save();
 
     const io = req.app.get('io');
     if (io) {
@@ -762,10 +638,10 @@ export const updateProfile = async (req, res) => {
   }
 };
 
-export const getAllUsers = async (req, res) => {
+export const getAllUsersController = async (req, res) => {
   try {
     const onlineMap = req.app.get('onlineUsers') || new Map();
-    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    const users = await getAllUsers(req.firebaseToken);
 
     const formattedUsers = users.map((u) => {
       const isOnline = onlineMap.has(u._id.toString());
@@ -781,13 +657,15 @@ export const getAllUsers = async (req, res) => {
       count: formattedUsers.length,
       users: formattedUsers
     });
-  } catch (error) {
+  } catch {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve users list'
     });
   }
 };
+
+export { getAllUsersController as getAllUsers };
 
 export const updateUserRole = async (req, res) => {
   try {
@@ -801,16 +679,13 @@ export const updateUserRole = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
+    const user = await updateUser(userId, { role }, req.firebaseToken);
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-
-    user.role = role;
-    await user.save();
 
     const io = req.app.get('io');
     if (io) {
@@ -850,7 +725,7 @@ export const forgotPassword = async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await getUserByEmail(cleanEmail);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -905,7 +780,7 @@ export const verifyOtp = async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await getUserByEmail(cleanEmail);
     if (user && (user.authProvider === 'google' || user.googleId)) {
       return res.status(400).json({
         success: false,
@@ -1033,7 +908,7 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email: targetEmail }).select('+password');
+    const user = await getUserByEmail(targetEmail);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -1049,14 +924,11 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    user.password = newPassword;
-    await user.save();
-
     await Otp.deleteMany({ email: targetEmail });
 
     return res.status(200).json({
       success: true,
-      message: 'Password reset successful! Please sign in with your new password.'
+      message: 'Password reset verified! Please sign in with your new password.'
     });
   } catch (error) {
     return res.status(500).json({

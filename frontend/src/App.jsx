@@ -10,6 +10,8 @@ import CookieBanner from './components/landing/CookieBanner';
 import { getCurrentUser } from './services/api';
 import { disconnectSocket } from './services/socket';
 import { cookieStorage } from './services/storage';
+import { auth } from './config/firebase';
+import { onIdTokenChanged, signOut } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
 
 function App() {
@@ -50,6 +52,19 @@ function App() {
     } else {
       setLoading(false);
     }
+
+    const unsubscribe = onIdTokenChanged(auth, async (fbUser) => {
+      if (fbUser && cookieStorage.getItem('mailchat_token')) {
+        try {
+          const freshToken = await fbUser.getIdToken();
+          cookieStorage.setItem('mailchat_token', freshToken);
+        } catch {
+          // Ignore token refresh errors; existing error handlers will prompt re-login
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleLogin = (user, token) => {
@@ -71,6 +86,7 @@ function App() {
 
   const handleLogout = () => {
     disconnectSocket(true);
+    signOut(auth).catch(() => {});
     cookieStorage.removeItem('mailchat_token');
     cookieStorage.removeItem('mailchat_user');
     setCurrentUser(null);

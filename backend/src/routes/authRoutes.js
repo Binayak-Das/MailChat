@@ -1,8 +1,7 @@
 import express from 'express';
 import {
-  register,
+  firebaseAuth,
   login,
-  googleAuth,
   loginWith2FA,
   resend2faLoginOtp,
   send2faSetupOtp,
@@ -22,9 +21,8 @@ import { protect, authorizeAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post('/register', register);
+router.post('/firebase', firebaseAuth);
 router.post('/login', login);
-router.post('/google', googleAuth);
 router.post('/login-2fa', loginWith2FA);
 router.post('/2fa/resend-login-otp', resend2faLoginOtp);
 

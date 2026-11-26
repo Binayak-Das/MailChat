@@ -17,16 +17,51 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import {
-  loginUser,
-  registerUser,
-  googleAuthLogin,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signInWithPopup,
+  getAdditionalUserInfo,
+  signOut
+} from 'firebase/auth';
+import { auth, googleProvider } from '../../config/firebase';
+import {
+  firebaseAuthSync,
   loginWith2FA,
   resend2faLoginOtp,
   sendPasswordResetOtp,
   verifyPasswordResetOtp,
   resetPassword
 } from '../../services/api';
-import { useGoogleLogin } from '@react-oauth/google';
+
+function getFirebaseErrorMessage(err) {
+  const code = err?.code || '';
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+      return 'Invalid email or password.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email address already exists.';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters long.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/too-many-requests':
+      return 'Too many failed attempts. Please wait a moment and try again.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Google sign-in was cancelled.';
+    case 'auth/popup-blocked':
+      return 'Popup was blocked by your browser. Please allow popups and try again.';
+    case 'auth/operation-not-allowed':
+      return 'This sign-in method is not enabled in Firebase Console. Please enable Email/Password and Google providers in Firebase Authentication.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your internet connection.';
+    default:
+      return err?.message || 'Authentication failed. Please try again.';
+  }
+}
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAuthSuccess }) {
   const [mode, setMode] = useState(initialMode);
@@ -98,13 +133,25 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
     return () => clearTimeout(timer);
   }, [twoFactorCooldown]);
 
-  const handleGoogleAuthAction = async (googlePayload) => {
+  const handleGoogleLogin = async () => {
     setErrorMsg('');
     setSuccessMsg('');
     setLoading(true);
 
+    let cred = null;
+    let isNewGoogleUser = false;
+
     try {
-      const res = await googleAuthLogin(googlePayload);
+      cred = await signInWithPopup(auth, googleProvider);
+      isNewGoogleUser = !!getAdditionalUserInfo(cred)?.isNewUser;
+      const googleEmail = cred.user.email || cred.user.providerData?.[0]?.email || '';
+      const idToken = await cred.user.getIdToken();
+      const res = await firebaseAuthSync({
+        idToken,
+        name: cred.user.displayName || '',
+        email: googleEmail,
+        mode: 'google'
+      });
 
       if (res.require2FA) {
         setTwoFactorEmail(res.email);
@@ -120,45 +167,18 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
       onClose();
 
       if (onAuthSuccess) {
-        onAuthSuccess(res.user, res.token);
+        onAuthSuccess(res.user, res.token || idToken);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Google authentication failed. Please try again.');
+      if (isNewGoogleUser && cred?.user) {
+        await cred.user.delete().catch(() => {});
+      }
+      await signOut(auth).catch(() => {});
+      setErrorMsg(getFirebaseErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
-
-  const handleGoogleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setErrorMsg('');
-      setSuccessMsg('');
-      setLoading(true);
-      try {
-        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-        });
-        const googleUser = await userInfoRes.json();
-        await handleGoogleAuthAction({
-          googleUser: {
-            id: googleUser.sub,
-            email: googleUser.email,
-            name: googleUser.name,
-            avatar: googleUser.picture,
-          }
-        });
-      } catch (err) {
-        console.error('Google profile fetch error:', err);
-        setErrorMsg('Failed to retrieve Google profile: ' + (err.message || ''));
-        setLoading(false);
-      }
-    },
-    onError: (err) => {
-      console.error('Google Sign-In Error:', err);
-      setErrorMsg('Google authentication was cancelled or failed.');
-      setLoading(false);
-    }
-  });
 
   if (!isOpen) return null;
 
@@ -179,10 +199,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
     setLoading(true);
 
     try {
+      const email = formData.email.trim();
+      const password = formData.password;
+
       if (mode === 'login') {
-        const res = await loginUser({
-          email: formData.email.trim(),
-          password: formData.password
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        const idToken = await cred.user.getIdToken();
+        const res = await firebaseAuthSync({
+          idToken,
+          mode: 'login'
         });
 
         if (res.require2FA) {
@@ -199,21 +224,38 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
         onClose();
 
         if (onAuthSuccess) {
-          onAuthSuccess(res.user, res.token);
+          onAuthSuccess(res.user, res.token || idToken);
         }
       } else if (mode === 'register') {
-        await registerUser({
-          name: formData.name.trim(),
-          email: formData.email.trim(),
-          password: formData.password
-        });
+        const fullName = formData.name.trim();
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+        try {
+          if (fullName) {
+            await updateProfile(cred.user, { displayName: fullName });
+          }
+
+          const idToken = await cred.user.getIdToken(true);
+          await firebaseAuthSync({
+            idToken,
+            name: fullName,
+            email,
+            mode: 'register'
+          });
+        } catch (syncErr) {
+          await cred.user.delete().catch(() => {});
+          throw syncErr;
+        }
+
+        await signOut(auth);
 
         resetAllFields();
         setMode('login');
         setSuccessMsg('Account registered successfully! Please sign in.');
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Authentication request failed. Please check your credentials.');
+      await signOut(auth).catch(() => {});
+      setErrorMsg(getFirebaseErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -481,6 +523,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
             <button
               type="button"
               onClick={() => {
+                signOut(auth).catch(() => {});
                 resetAllFields();
                 setMode('login');
               }}
@@ -531,7 +574,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
             <button
               type="button"
               disabled={loading}
-              onClick={() => handleGoogleLogin()}
+              onClick={handleGoogleLogin}
               className="w-full py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-bold shadow-xs flex items-center justify-center gap-3 transition-all cursor-pointer"
             >
               <svg className="w-4.5 h-4.5 shrink-0" viewBox="0 0 24 24">
@@ -655,6 +698,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  minLength={6}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="••••••••"

@@ -6,8 +6,8 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import mongoose from "mongoose";
 import { connectDB } from "./config/db.js";
-import { seedAdmin } from "./utils/seedAdmin.js";
 import authRoutes from "./routes/authRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
@@ -18,7 +18,7 @@ import reportRoutes from "./routes/reportRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import Chat from "./models/Chat.js";
 import Message from "./models/Message.js";
-import User from "./models/User.js";
+import { updateUser } from "./utils/userStore.js";
 
 dotenv.config();
 
@@ -132,7 +132,7 @@ const pruneDeadSockets = () => {
     if (socketSet.size === 0) {
       onlineUsers.delete(userId);
       const now = new Date();
-      User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: now }).exec();
+      updateUser(userId, { isOnline: false, lastSeen: now.toISOString() }).catch(() => {});
       io.emit("user_presence", {
         userId,
         status: "offline",
@@ -164,7 +164,7 @@ io.on("connection", (socket) => {
     onlineUsers.get(userId).add(socket.id);
 
     const now = new Date();
-    await User.findByIdAndUpdate(userId, { isOnline: true, lastSeen: now }).catch(() => {});
+    updateUser(userId, { isOnline: true, lastSeen: now.toISOString() }).catch(() => {});
 
     try {
       const userChats = await Chat.find({
@@ -229,7 +229,7 @@ io.on("connection", (socket) => {
     if (uid && onlineUsers.has(uid)) {
       onlineUsers.delete(uid);
       const now = new Date();
-      await User.findByIdAndUpdate(uid, { isOnline: false, lastSeen: now }).catch(() => {});
+      updateUser(uid, { isOnline: false, lastSeen: now.toISOString() }).catch(() => {});
       io.emit("online_users", Array.from(onlineUsers.keys()));
       io.emit("user_presence", {
         userId: uid,
@@ -248,7 +248,7 @@ io.on("connection", (socket) => {
       if (userSockets.size === 0) {
         onlineUsers.delete(uid);
         const now = new Date();
-        await User.findByIdAndUpdate(uid, { isOnline: false, lastSeen: now }).catch(() => {});
+        updateUser(uid, { isOnline: false, lastSeen: now.toISOString() }).catch(() => {});
         io.emit("online_users", Array.from(onlineUsers.keys()));
         io.emit("user_presence", {
           userId: uid,
@@ -438,9 +438,9 @@ io.on("connection", (socket) => {
       if (userSockets.size === 0) {
         onlineUsers.delete(socket.userId);
         const now = new Date();
-        await User.findByIdAndUpdate(socket.userId, {
+        updateUser(socket.userId, {
           isOnline: false,
-          lastSeen: now,
+          lastSeen: now.toISOString(),
         }).catch(() => {});
         io.emit("online_users", Array.from(onlineUsers.keys()));
         io.emit("user_presence", {
@@ -474,9 +474,9 @@ const startKeepAlive = () => {
 const startServer = async () => {
   try {
     await connectDB();
-    await seedAdmin();
 
-    await User.updateMany({}, { isOnline: false }).catch(() => {});
+    // Ensure no users collection remains in MongoDB (users live in Firebase)
+    await mongoose.connection.db.collection("users").drop().catch(() => {});
     onlineUsers.clear();
 
     server.listen(PORT, () => {

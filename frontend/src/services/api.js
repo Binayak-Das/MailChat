@@ -1,16 +1,33 @@
 const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
-  }
   if (typeof window !== 'undefined' && window.location.hostname) {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return 'http://localhost:5000/api';
     }
   }
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+  }
   return 'https://mailchat-server.onrender.com/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
+
+export async function firebaseAuthSync({ idToken, name, mode, email }) {
+  const response = await fetch(`${API_BASE_URL}/auth/firebase`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`
+    },
+    body: JSON.stringify({ idToken, name, mode, email })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Authentication failed');
+  }
+  return data;
+}
 
 export async function registerUser({ name, email, password }) {
   const response = await fetch(`${API_BASE_URL}/auth/register`, {
