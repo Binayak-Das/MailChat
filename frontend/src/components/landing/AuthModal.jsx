@@ -56,6 +56,10 @@ function getFirebaseErrorMessage(err) {
       return 'Popup was blocked by your browser. Please allow popups and try again.';
     case 'auth/operation-not-allowed':
       return 'This sign-in method is not enabled in Firebase Console. Please enable Email/Password and Google providers in Firebase Authentication.';
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized in Firebase Console. Add it under Authentication → Settings → Authorized domains.';
+    case 'auth/account-exists-with-different-credential':
+      return 'An account with this email already exists. Please sign in with your email and password.';
     case 'auth/network-request-failed':
       return 'Network error. Please check your internet connection.';
     default:
@@ -153,8 +157,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
       const idToken = await cred.user.getIdToken();
       const res = await firebaseAuthSync({
         idToken,
-        name: cred.user.displayName || '',
+        name: cred.user.displayName || additionalInfo?.profile?.name || '',
         email: googleEmail,
+        avatar: cred.user.photoURL || additionalInfo?.profile?.picture || '',
         mode: 'google'
       });
 
@@ -175,6 +180,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
         onAuthSuccess(res.user, res.token || idToken);
       }
     } catch (err) {
+      console.error('Google Sign-In error:', err);
       if (isNewGoogleUser && cred?.user) {
         await cred.user.delete().catch(() => {});
       }

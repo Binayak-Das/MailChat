@@ -32,7 +32,7 @@ export const firebaseAuth = async (req, res) => {
     const headerToken = authHeader && authHeader.startsWith('Bearer ')
       ? authHeader.split(' ')[1]
       : null;
-    const { idToken: bodyToken, name, mode, email: bodyEmail } = req.body || {};
+    const { idToken: bodyToken, name, mode, email: bodyEmail, avatar: bodyAvatar } = req.body || {};
     const idToken = bodyToken || headerToken;
 
     if (!idToken) {
@@ -70,6 +70,16 @@ export const firebaseAuth = async (req, res) => {
     }
 
     if (user) {
+      if (mode === 'register') {
+        return res.status(409).json({
+          success: false,
+          message:
+            user.authProvider === 'google'
+              ? 'An account with this email address already exists via Google Sign-In. Please use "Continue with Google".'
+              : 'An account with this email address already exists. Please sign in instead.'
+        });
+      }
+
       if (isGoogleProvider && user.authProvider !== 'google') {
         return res.status(409).json({
           success: false,
@@ -155,7 +165,7 @@ export const firebaseAuth = async (req, res) => {
         name: (name && name.trim()) || fbUser.name || cleanEmail.split('@')[0],
         email: cleanEmail,
         firebaseUid: fbUser.uid,
-        avatar: fbUser.picture || '',
+        avatar: fbUser.picture || bodyAvatar || '',
         authProvider: isGoogleProvider ? 'google' : 'firebase',
         role: isAdminEmail ? 'admin' : isGoogleProvider ? 'user' : 'pending',
         status: 'active',

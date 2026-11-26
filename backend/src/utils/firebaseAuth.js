@@ -54,6 +54,7 @@ export async function verifyFirebaseIdToken(idToken) {
     algorithms: ['RS256'],
     audience: FIREBASE_PROJECT_ID,
     issuer: `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`,
+    clockTolerance: 60,
   });
 
   if (!payload.sub || typeof payload.sub !== 'string') {

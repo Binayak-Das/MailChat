@@ -12,14 +12,14 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-export async function firebaseAuthSync({ idToken, name, mode, email }) {
+export async function firebaseAuthSync({ idToken, name, mode, email, avatar }) {
   const response = await fetch(`${API_BASE_URL}/auth/firebase`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${idToken}`
     },
-    body: JSON.stringify({ idToken, name, mode, email })
+    body: JSON.stringify({ idToken, name, mode, email, avatar })
   });
 
   const data = await response.json();
