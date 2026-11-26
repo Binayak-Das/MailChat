@@ -1,6 +1,14 @@
 import nodemailer from 'nodemailer';
 
-function createMailTransporter() {
+function getFromAddress() {
+  let fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER || '';
+  if (typeof fromAddress === 'string') {
+    fromAddress = fromAddress.replace(/^"(.*)"$/, '$1').trim();
+  }
+  return fromAddress || process.env.EMAIL_USER;
+}
+
+function createSmtpTransporter(port = 465, secure = true) {
   const emailUser = process.env.EMAIL_USER?.trim();
   const emailPass = process.env.EMAIL_PASS?.trim();
 
@@ -8,29 +16,101 @@ function createMailTransporter() {
     return null;
   }
 
-  if (
-    !process.env.EMAIL_SERVICE ||
-    process.env.EMAIL_SERVICE.toLowerCase() === 'gmail' ||
-    emailUser.endsWith('@gmail.com')
-  ) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: emailUser,
-        pass: emailPass
-      }
-    });
-  }
-
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
+    port,
+    secure,
+    family: 4,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
     auth: {
       user: emailUser,
       pass: emailPass
     }
   });
+}
+
+async function sendViaHttpsApi({ from, to, subject, text, html }) {
+  if (process.env.RESEND_API_KEY) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ from, to: [to], subject, text, html })
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Resend API error (${res.status}): ${errBody}`);
+    }
+    const data = await res.json();
+    return { success: true, messageId: data.id };
+  }
+
+  if (process.env.BREVO_API_KEY) {
+    const senderEmail = process.env.EMAIL_USER?.trim() || from;
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': process.env.BREVO_API_KEY.trim(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: 'MailChat Security', email: senderEmail },
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+        htmlContent: html
+      })
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Brevo API error (${res.status}): ${errBody}`);
+    }
+    const data = await res.json();
+    return { success: true, messageId: data.messageId };
+  }
+
+  return null;
+}
+
+async function sendMailWithFallback({ to, subject, text, html }) {
+  const from = getFromAddress();
+
+  const apiResult = await sendViaHttpsApi({ from, to, subject, text, html });
+  if (apiResult) {
+    return apiResult;
+  }
+
+  const primaryPort = parseInt(process.env.SMTP_PORT || '465', 10);
+  const primarySecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : primaryPort === 465;
+
+  const attempts = [
+    { port: primaryPort, secure: primarySecure },
+    primaryPort === 465 ? { port: 587, secure: false } : { port: 465, secure: true }
+  ];
+
+  let lastError = null;
+  for (const { port, secure } of attempts) {
+    const transporter = createSmtpTransporter(port, secure);
+    if (!transporter) {
+      throw new Error(
+        'Email service is not configured. Set EMAIL_USER and EMAIL_PASS (or RESEND_API_KEY / BREVO_API_KEY) in environment variables.'
+      );
+    }
+    try {
+      const info = await transporter.sendMail({ from, to, subject, text, html });
+      return { success: true, messageId: info.messageId };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Email delivery failed: ${lastError?.message || 'SMTP connection failed'}. If hosting on Render free tier (which blocks SMTP ports 465/587), set RESEND_API_KEY or BREVO_API_KEY in Render Environment.`
+  );
 }
 
 export function getOtpEmailTemplate(otp, recipientEmail) {
@@ -369,77 +449,21 @@ export function getTwoFactorOtpEmailTemplate(otp, recipientEmail, action = 'Logi
 }
 
 export async function sendPasswordResetOtpEmail(to, otp) {
-  const transporter = createMailTransporter();
   const html = getOtpEmailTemplate(otp, to);
-
-  if (!transporter) {
-    throw new Error(
-      'Email service is not configured. Please set EMAIL_USER and EMAIL_PASS in your backend/.env file.'
-    );
-  }
-
-  try {
-    let fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER;
-    if (typeof fromAddress === 'string') {
-      fromAddress = fromAddress.replace(/^"(.*)"$/, '$1').trim();
-    }
-    if (!fromAddress) {
-      fromAddress = process.env.EMAIL_USER;
-    }
-
-    const info = await transporter.sendMail({
-      from: fromAddress,
-      to,
-      subject: `MailChat - Password Reset Verification Code`,
-      text: `Your MailChat password reset verification code is: ${otp}. It expires in 10 minutes. If you did not request this, please ignore this email.`,
-      html
-    });
-
-    return {
-      success: true,
-      messageId: info.messageId
-    };
-  } catch (error) {
-    throw new Error(
-      `Email delivery failed: ${error.message}. Please check your Gmail App Password and network connection.`
-    );
-  }
+  return sendMailWithFallback({
+    to,
+    subject: 'MailChat - Password Reset Verification Code',
+    text: `Your MailChat password reset verification code is: ${otp}. It expires in 10 minutes. If you did not request this, please ignore this email.`,
+    html
+  });
 }
 
 export async function sendTwoFactorOtpEmail(to, otp, action = 'Login Verification') {
-  const transporter = createMailTransporter();
   const html = getTwoFactorOtpEmailTemplate(otp, to, action);
-
-  if (!transporter) {
-    throw new Error(
-      'Email service is not configured. Please set EMAIL_USER and EMAIL_PASS in your backend/.env file.'
-    );
-  }
-
-  try {
-    let fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER;
-    if (typeof fromAddress === 'string') {
-      fromAddress = fromAddress.replace(/^"(.*)"$/, '$1').trim();
-    }
-    if (!fromAddress) {
-      fromAddress = process.env.EMAIL_USER;
-    }
-
-    const info = await transporter.sendMail({
-      from: fromAddress,
-      to,
-      subject: `MailChat - Two-Factor Verification Code:`,
-      text: `Your MailChat 2FA verification code for ${action} is: ${otp}. Valid for 10 minutes.`,
-      html
-    });
-
-    return {
-      success: true,
-      messageId: info.messageId
-    };
-  } catch (error) {
-    throw new Error(
-      `Email delivery failed: ${error.message}. Please check your Gmail App Password and network connection.`
-    );
-  }
+  return sendMailWithFallback({
+    to,
+    subject: 'MailChat - Two-Factor Verification Code:',
+    text: `Your MailChat 2FA verification code for ${action} is: ${otp}. Valid for 10 minutes.`,
+    html
+  });
 }
