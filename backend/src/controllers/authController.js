@@ -56,7 +56,7 @@ export const firebaseAuth = async (req, res) => {
     if (!resolvedEmail) {
       return res.status(400).json({
         success: false,
-        message: 'Account already exists'
+        message: 'Firebase account does not have an email address'
       });
     }
 

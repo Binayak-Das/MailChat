@@ -143,8 +143,13 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
 
     try {
       cred = await signInWithPopup(auth, googleProvider);
-      isNewGoogleUser = !!getAdditionalUserInfo(cred)?.isNewUser;
-      const googleEmail = cred.user.email || cred.user.providerData?.[0]?.email || '';
+      const additionalInfo = getAdditionalUserInfo(cred);
+      isNewGoogleUser = !!additionalInfo?.isNewUser;
+      const googleEmail =
+        cred.user.email ||
+        cred.user.providerData?.[0]?.email ||
+        additionalInfo?.profile?.email ||
+        '';
       const idToken = await cred.user.getIdToken();
       const res = await firebaseAuthSync({
         idToken,
