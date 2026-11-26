@@ -413,7 +413,6 @@ export function getTwoFactorOtpEmailTemplate(otp, recipientEmail, action = 'Logi
 <body>
   <div class="wrapper">
     <div class="header">
-      <div class="shield-icon">🛡️</div>
       <h1 class="logo-text">MailChat 2FA Protection</h1>
       <div style="color: #bfdbfe; font-size: 13px; margin-top: 4px;">Two-Factor Authentication Security Code</div>
     </div>
