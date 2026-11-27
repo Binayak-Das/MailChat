@@ -501,6 +501,29 @@ io.on("connection", (socket) => {
       }
 
       const room = getOrCreateLiveRoom(code);
+
+      // Evict any stale socket for the same userId (prevents duplicate user tiles on reconnect)
+      for (const [oldSid, oldP] of Array.from(room.waitingRoom.entries())) {
+        if (oldP.userId === userId && oldSid !== socket.id) {
+          room.waitingRoom.delete(oldSid);
+        }
+      }
+      for (const [oldSid, oldP] of Array.from(room.participants.entries())) {
+        if (oldP.userId === userId && oldSid !== socket.id) {
+          room.participants.delete(oldSid);
+          const oldSocket = io.sockets.sockets.get(oldSid);
+          if (oldSocket) {
+            oldSocket.leave(`meet:${code}`);
+            oldSocket.currentMeetCode = null;
+          }
+          io.to(`meet:${code}`).emit("meet:user-left", {
+            socketId: oldSid,
+            userId: oldP.userId,
+            name: null,
+          });
+        }
+      }
+
       const participantInfo = {
         socketId: socket.id,
         userId,

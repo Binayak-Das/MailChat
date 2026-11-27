@@ -69,8 +69,13 @@ function VideoTile({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (stream && el.srcObject !== stream) {
-      el.srcObject = stream;
+    if (stream) {
+      if (el.srcObject !== stream) {
+        el.srcObject = stream;
+      }
+      el.play().catch(() => {});
+    } else {
+      el.srcObject = null;
     }
   }, [stream, videoEnabled, isScreenSharing]);
 
@@ -208,6 +213,18 @@ export default function MeetRoom({ user }) {
   const mediaStoppedRef = useRef(false);
   const iceServersRef = useRef(ICE_SERVERS.iceServers);
   const phaseRef = useRef(phase);
+  const userRef = useRef(user);
+  const pinnedIdRef = useRef(pinnedId);
+  const remoteStreamsRef = useRef({});
+  const makingOfferRef = useRef(new Map());
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    pinnedIdRef.current = pinnedId;
+  }, [pinnedId]);
   const peerConnectionsRef = useRef(new Map()); // socketId -> RTCPeerConnection
   const pendingCandidatesRef = useRef(new Map()); // socketId -> RTCIceCandidateInit[]
   const socketRef = useRef(null);
@@ -285,6 +302,8 @@ export default function MeetRoom({ user }) {
     peerConnectionsRef.current.forEach((pc) => pc.close());
     peerConnectionsRef.current.clear();
     pendingCandidatesRef.current.clear();
+    makingOfferRef.current.clear();
+    remoteStreamsRef.current = {};
     setRemoteStreams({});
     setIsScreenSharing(false);
   }, []);
@@ -297,10 +316,30 @@ export default function MeetRoom({ user }) {
         localStreamRef.current.getTracks().forEach((t) => t.stop());
       }
       const constraints = {
-        audio: audioId ? { deviceId: { exact: audioId } } : true,
+        audio: audioId
+          ? {
+              deviceId: { exact: audioId },
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          : {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            },
         video: videoId
-          ? { deviceId: { exact: videoId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { width: { ideal: 1280 }, height: { ideal: 720 } }
+          ? {
+              deviceId: { exact: videoId },
+              width: { ideal: 640, max: 1280 },
+              height: { ideal: 360, max: 720 },
+              frameRate: { ideal: 24, max: 30 }
+            }
+          : {
+              width: { ideal: 640, max: 1280 },
+              height: { ideal: 360, max: 720 },
+              frameRate: { ideal: 24, max: 30 }
+            }
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (mediaStoppedRef.current) {
@@ -413,56 +452,61 @@ export default function MeetRoom({ user }) {
     };
   }, [audioEnabled, phase]);
 
-  // Remote active speaker detection
+  // Remote active speaker detection via WebRTC stats (never touches AudioContext on remote streams)
   useEffect(() => {
-    const entries = Object.entries(remoteStreams);
-    if (phase !== 'in-call' || entries.length === 0) return;
+    if (phase !== 'in-call') return;
 
-    let animId;
-    let ctx;
-    const analysers = [];
-    try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      entries.forEach(([socketId, stream]) => {
-        if (!stream || stream.getAudioTracks().length === 0) return;
-        const src = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        src.connect(analyser);
-        analysers.push({ socketId, analyser, data: new Uint8Array(analyser.frequencyBinCount) });
-      });
-
-      if (analysers.length > 0) {
-        const tick = () => {
-          setSpeakingMap((prev) => {
-            let changed = false;
-            const next = { ...prev };
-            analysers.forEach(({ socketId, analyser, data }) => {
-              analyser.getByteFrequencyData(data);
-              let sum = 0;
-              for (let i = 0; i < data.length; i++) sum += data[i];
-              const avg = sum / data.length;
-              const speaking = avg > 18;
-              if (Boolean(next[socketId]) !== speaking) {
-                next[socketId] = speaking;
-                changed = true;
+    const timer = setInterval(async () => {
+      const updates = {};
+      for (const [socketId, pc] of peerConnectionsRef.current.entries()) {
+        try {
+          const stats = await pc.getStats();
+          let speaking = false;
+          stats.forEach((report) => {
+            if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+              if (typeof report.audioLevel === 'number' && report.audioLevel > 0.04) {
+                speaking = true;
               }
-            });
-            return changed ? next : prev;
+            }
           });
-          animId = requestAnimationFrame(tick);
-        };
-        tick();
+          updates[socketId] = speaking;
+        } catch {
+          // ignore stats error
+        }
       }
-    } catch {
-      // ignore AudioContext errors
-    }
 
-    return () => {
-      if (animId) cancelAnimationFrame(animId);
-      if (ctx && ctx.state !== 'closed') ctx.close().catch(() => {});
-    };
-  }, [remoteStreams, phase]);
+      setSpeakingMap((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        Object.entries(updates).forEach(([sid, val]) => {
+          if (Boolean(next[sid]) !== val) {
+            next[sid] = val;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 300);
+
+    return () => clearInterval(timer);
+  }, [phase]);
+
+  const applyVideoBitrateCap = useCallback((pc, maxBitrate = 600000) => {
+    try {
+      const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+      if (!sender) return;
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      params.encodings[0].maxBitrate = maxBitrate;
+      params.encodings[0].maxFramerate = 24;
+      params.degradationPreference = 'maintain-framerate';
+      sender.setParameters(params).catch(() => {});
+    } catch {
+      // ignore unsupported setParameters
+    }
+  }, []);
 
   // WebRTC Peer Connection helper
   const createPeerConnection = useCallback((targetSocketId, isInitiator) => {
@@ -486,6 +530,8 @@ export default function MeetRoom({ user }) {
       }
     }
 
+    applyVideoBitrateCap(pc, screenStreamRef.current ? 1500000 : 600000);
+
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
         socketRef.current.emit('meet:signal', {
@@ -497,17 +543,24 @@ export default function MeetRoom({ user }) {
     };
 
     pc.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      if (remoteStream) {
-        setRemoteStreams((prev) => ({
-          ...prev,
-          [targetSocketId]: remoteStream
-        }));
+      let combined = remoteStreamsRef.current[targetSocketId];
+      if (!combined) {
+        combined = new MediaStream();
       }
+      if (!combined.getTracks().some((t) => t.id === event.track.id)) {
+        combined.addTrack(event.track);
+      }
+      const nextStream = new MediaStream(combined.getTracks());
+      remoteStreamsRef.current[targetSocketId] = nextStream;
+      setRemoteStreams((prev) => ({
+        ...prev,
+        [targetSocketId]: nextStream
+      }));
     };
 
     pc.oniceconnectionstatechange = () => {
       if (pc.iceConnectionState === 'failed' && socketRef.current) {
+        makingOfferRef.current.set(targetSocketId, true);
         pc.createOffer({ iceRestart: true })
           .then((offer) => pc.setLocalDescription(offer))
           .then(() => {
@@ -519,7 +572,10 @@ export default function MeetRoom({ user }) {
               });
             }
           })
-          .catch(() => {});
+          .catch(() => {})
+          .finally(() => {
+            makingOfferRef.current.set(targetSocketId, false);
+          });
       }
     };
 
@@ -530,6 +586,7 @@ export default function MeetRoom({ user }) {
     };
 
     if (isInitiator) {
+      makingOfferRef.current.set(targetSocketId, true);
       pc.createOffer()
         .then((offer) => pc.setLocalDescription(offer))
         .then(() => {
@@ -541,11 +598,14 @@ export default function MeetRoom({ user }) {
             });
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          makingOfferRef.current.set(targetSocketId, false);
+        });
     }
 
     return pc;
-  }, []);
+  }, [applyVideoBitrateCap]);
 
   const closePeerConnection = useCallback((targetSocketId) => {
     const pc = peerConnectionsRef.current.get(targetSocketId);
@@ -554,6 +614,8 @@ export default function MeetRoom({ user }) {
       peerConnectionsRef.current.delete(targetSocketId);
     }
     pendingCandidatesRef.current.delete(targetSocketId);
+    makingOfferRef.current.delete(targetSocketId);
+    delete remoteStreamsRef.current[targetSocketId];
     setRemoteStreams((prev) => {
       const next = { ...prev };
       delete next[targetSocketId];
@@ -598,26 +660,43 @@ export default function MeetRoom({ user }) {
     };
 
     const onJoined = ({ meeting, participants: existing, waitingList: waiting }) => {
+      const deduped = [];
+      const seenUserIds = new Set([currentUserId]);
+      (existing || []).forEach((p) => {
+        if (!p || p.socketId === s.id) return;
+        if (p.userId && seenUserIds.has(p.userId)) return;
+        if (p.userId) seenUserIds.add(p.userId);
+        deduped.push(p);
+      });
+
+      const activeSocketIds = new Set(deduped.map((p) => p.socketId));
+      Array.from(peerConnectionsRef.current.keys()).forEach((sid) => {
+        if (!activeSocketIds.has(sid)) {
+          closePeerConnection(sid);
+        }
+      });
+
       setMeetingInfo(meeting);
       setChatMessages(meeting.chatMessages || []);
       setPolls(meeting.polls || []);
       setWaitingList(waiting || []);
-      setParticipants(existing || []);
+      setParticipants(deduped);
       setPhase('in-call');
 
       // Initiate WebRTC offers to all existing participants
-      (existing || []).forEach((p) => {
-        if (p.socketId !== s.id) {
-          createPeerConnection(p.socketId, true);
-        }
+      deduped.forEach((p) => {
+        createPeerConnection(p.socketId, true);
       });
     };
 
     const onUserJoined = ({ participant }) => {
       if (!participant || participant.socketId === s.id) return;
+      if (participant.userId === currentUserId) return;
       setParticipants((prev) => {
-        if (prev.some((p) => p.socketId === participant.socketId)) return prev;
-        return [...prev, participant];
+        const filtered = prev.filter(
+          (p) => p.socketId !== participant.socketId && p.userId !== participant.userId
+        );
+        return [...filtered, participant];
       });
       // Wait for offer from the newly joined participant
       createPeerConnection(participant.socketId, false);
@@ -627,7 +706,7 @@ export default function MeetRoom({ user }) {
     const onUserLeft = ({ socketId, name }) => {
       closePeerConnection(socketId);
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
-      if (pinnedId === socketId) setPinnedId(null);
+      if (pinnedIdRef.current === socketId) setPinnedId(null);
       if (name) showToast(`${name} left the meeting`, 'info');
     };
 
@@ -639,6 +718,18 @@ export default function MeetRoom({ user }) {
         }
 
         if (type === 'offer') {
+          const isPolite = s.id < fromSocketId;
+          const offerCollision =
+            makingOfferRef.current.get(fromSocketId) || pc.signalingState !== 'stable';
+
+          if (offerCollision && !isPolite) {
+            return;
+          }
+
+          if (offerCollision && isPolite) {
+            await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(signal));
           const queued = pendingCandidatesRef.current.get(fromSocketId) || [];
           for (const cand of queued) {
@@ -654,12 +745,14 @@ export default function MeetRoom({ user }) {
             type: 'answer'
           });
         } else if (type === 'answer') {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
-          const queued = pendingCandidatesRef.current.get(fromSocketId) || [];
-          for (const cand of queued) {
-            await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          if (pc.signalingState === 'have-local-offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal));
+            const queued = pendingCandidatesRef.current.get(fromSocketId) || [];
+            for (const cand of queued) {
+              await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+            }
+            pendingCandidatesRef.current.delete(fromSocketId);
           }
-          pendingCandidatesRef.current.delete(fromSocketId);
         } else if (type === 'ice-candidate') {
           if (pc.remoteDescription && pc.remoteDescription.type) {
             await pc.addIceCandidate(new RTCIceCandidate(signal)).catch(() => {});
@@ -741,7 +834,7 @@ export default function MeetRoom({ user }) {
       if (phaseRef.current === 'in-call') {
         s.emit('meet:join-room', {
           meetingCode,
-          user,
+          user: userRef.current,
           mediaState: {
             audio: Boolean(localStreamRef.current?.getAudioTracks().some((t) => t.enabled)),
             video: Boolean(localStreamRef.current?.getVideoTracks().some((t) => t.enabled)),
@@ -790,7 +883,7 @@ export default function MeetRoom({ user }) {
       s.off('meet:removed', onRemoved);
       s.off('meet:ended', onEnded);
     };
-  }, [user, meetingCode, currentUserId, pinnedId, createPeerConnection, closePeerConnection, showToast]);
+  }, [meetingCode, currentUserId, createPeerConnection, closePeerConnection, showToast]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -842,14 +935,14 @@ export default function MeetRoom({ user }) {
     peerConnectionsRef.current.forEach((pc) => {
       const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
       if (sender && camTrack) {
-        sender.replaceTrack(camTrack).catch(() => {});
+        sender.replaceTrack(camTrack).then(() => applyVideoBitrateCap(pc, 600000)).catch(() => {});
       }
     });
     setIsScreenSharing(false);
     if (socketRef.current) {
       socketRef.current.emit('meet:media-state', { meetingCode, isScreenSharing: false });
     }
-  }, [meetingCode]);
+  }, [meetingCode, applyVideoBitrateCap]);
 
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
@@ -871,9 +964,10 @@ export default function MeetRoom({ user }) {
       peerConnectionsRef.current.forEach((pc) => {
         const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
         if (sender) {
-          sender.replaceTrack(screenTrack).catch(() => {});
+          sender.replaceTrack(screenTrack).then(() => applyVideoBitrateCap(pc, 1500000)).catch(() => {});
         } else {
           pc.addTrack(screenTrack, displayStream);
+          applyVideoBitrateCap(pc, 1500000);
         }
       });
 
