@@ -35,6 +35,7 @@ import {
   Info,
   ShieldCheck,
   KeyRound,
+  Video,
 } from "lucide-react";
 import {
   getAllUsers,
@@ -53,6 +54,7 @@ import {
 } from "../services/api";
 import MailModule from "../components/mail/MailModule";
 import ChatModule from "../components/chat/ChatModule";
+import MeetModule from "../components/meet/MeetModule";
 import { initSocket } from "../services/socket";
 import { playWhatsAppNotificationSound } from "../services/sound";
 import {
@@ -827,6 +829,30 @@ export default function AdminDashboard({ user = {}, onLogout, onUserUpdate }) {
 
             <button
               onClick={() => {
+                navigate("/admin/meet");
+                setMobileSidebarOpen(false);
+              }}
+              className={`w-full px-3.5 py-3 rounded-xl text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${activeTab === "meet"
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+            >
+              <div className="flex items-center gap-3">
+                <Video className="w-4.5 h-4.5 shrink-0" />
+                <span>Meet</span>
+              </div>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "meet"
+                  ? "bg-white/20 text-white"
+                  : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300"
+                  }`}
+              >
+                HD
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
                 navigate("/admin/activity");
                 setMobileSidebarOpen(false);
               }}
@@ -925,6 +951,7 @@ export default function AdminDashboard({ user = {}, onLogout, onUserUpdate }) {
               {(activeTab === "mails" || activeTab === "inbox") &&
                 "Mails"}
               {activeTab === "chats" && "Chats"}
+              {activeTab === "meet" && "Video Meet"}
               {activeTab === "settings" && "Settings"}
             </h1>
           </div>
@@ -1666,6 +1693,13 @@ export default function AdminDashboard({ user = {}, onLogout, onUserUpdate }) {
               user={user}
               showToast={showToast}
               onUnreadCountChange={setUnreadChatCount}
+            />
+          )}
+
+          {activeTab === "meet" && (
+            <MeetModule
+              user={user}
+              showToast={showToast}
             />
           )}
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { cookieStorage } from '../../services/storage';
 import {
   MessageSquare,
@@ -31,7 +32,10 @@ import {
   Loader2,
   Info,
   CornerUpLeft,
-  AlertTriangle
+  AlertTriangle,
+  Video,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import {
   fetchChats,
@@ -56,7 +60,9 @@ import {
   blockUser,
   unblockUser,
   createReport,
-  getPresenceStatus
+  getPresenceStatus,
+  createMeeting,
+  shareMeetingToChats
 } from '../../services/api';
 import { getSocket, initSocket } from '../../services/socket';
 import { playWhatsAppNotificationSound } from '../../services/sound';
@@ -160,8 +166,10 @@ const ModalPortal = ({ children }) => {
 };
 
 export default function ChatModule({ user, showToast, onUnreadCountChange }) {
+  const navigate = useNavigate();
   const token = cookieStorage.getItem('mailchat_token');
   const currentUserId = user?._id || user?.id;
+  const [startingMeet, setStartingMeet] = useState(false);
 
   const [chats, setChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
@@ -1638,6 +1646,52 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
               </div>
 
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={startingMeet || isCurrentChatBlocked}
+                  onClick={async () => {
+                    if (!activeChat?._id || !token || startingMeet) return;
+                    setStartingMeet(true);
+                    try {
+                      const title = activeChat.isGroupChat
+                        ? `${activeChat.chatName || 'Group'} Meet`
+                        : `${user?.name || 'MailChat'} & ${activeChatDetails.name} Meet`;
+                      const created = await createMeeting(token, { title });
+                      const code = created.meeting?.meetingCode;
+                      if (code) {
+                        const meetingUrl = `${window.location.origin}/meet/${code}`;
+                        const shared = await shareMeetingToChats(token, code, {
+                          chatIds: [activeChat._id],
+                          meetingUrl
+                        });
+                        if (shared.messages?.[0]) {
+                          setMessages((prev) => [...prev, shared.messages[0]]);
+                          setChats((prev) =>
+                            prev.map((c) =>
+                              c._id === activeChat._id ? { ...c, latestMessage: shared.messages[0] } : c
+                            )
+                          );
+                        }
+                        if (showToast) showToast('Meet link shared! Joining meeting...', 'success');
+                        navigate(`/meet/${code}`);
+                      }
+                    } catch (err) {
+                      if (showToast) showToast(err.message || 'Failed to start Meet', 'error');
+                    } finally {
+                      setStartingMeet(false);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  title="Start & share Google Meet in this chat"
+                >
+                  {startingMeet ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Video className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Meet</span>
+                </button>
+
                 {activeChat.isGroupChat ? (
                   <button
                     type="button"
@@ -2065,6 +2119,76 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                             >
                               <div>{m.content}</div>
 
+                              {(() => {
+                                const invite = m.meetingInvite?.meetingCode
+                                  ? m.meetingInvite
+                                  : (() => {
+                                      const match = (m.content || '').match(/\/meet\/([a-z0-9]+-[a-z0-9]+-[a-z0-9]+)/i);
+                                      if (!match) return null;
+                                      return {
+                                        meetingCode: match[1].toLowerCase(),
+                                        title: 'MailChat Video Meet',
+                                        hostName: m.sender?.name || 'Participant',
+                                        meetingUrl: `${window.location.origin}/meet/${match[1].toLowerCase()}`
+                                      };
+                                    })();
+                                if (!invite) return null;
+                                const joinUrl = `/meet/${invite.meetingCode}`;
+                                const fullUrl = `${window.location.origin}${joinUrl}`;
+                                return (
+                                  <div
+                                    className={`mt-2.5 p-3 rounded-xl border ${
+                                      isMe
+                                        ? 'bg-emerald-700/60 border-emerald-400/40 text-white'
+                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 mb-2">
+                                      <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                                        <Video className="w-4 h-4" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-xs font-extrabold truncate">
+                                          {invite.title || 'MailChat Meet'}
+                                        </div>
+                                        <div
+                                          className={`text-[11px] font-mono ${
+                                            isMe ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
+                                          }`}
+                                        >
+                                          Code: {invite.meetingCode}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => navigate(joinUrl)}
+                                        className="flex-1 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        <span>Join Meet</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          navigator.clipboard?.writeText(fullUrl);
+                                          if (showToast) showToast('Meet link copied!', 'success');
+                                        }}
+                                        className={`p-1.5 rounded-lg border cursor-pointer ${
+                                          isMe
+                                            ? 'border-emerald-400/40 hover:bg-emerald-600 text-white'
+                                            : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                        }`}
+                                        title="Copy Meet link"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
                               {isMe && (
                                 <div className="flex items-center justify-end gap-1 mt-1 text-[11px]">
                                   {deliveryStatus === 'read' && (
@@ -2323,6 +2447,46 @@ export default function ChatModule({ user, showToast, onUnreadCountChange }) {
                       title="Emoji Picker"
                     >
                       <Smile className="w-4.5 h-4.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isCurrentChatBlocked || startingMeet}
+                      onClick={async () => {
+                        if (!activeChat?._id || !token || startingMeet) return;
+                        setStartingMeet(true);
+                        try {
+                          const title = activeChat.isGroupChat
+                            ? `${activeChat.chatName || 'Group'} Meet`
+                            : `${user?.name || 'MailChat'} & ${activeChatDetails.name} Meet`;
+                          const created = await createMeeting(token, { title });
+                          const code = created.meeting?.meetingCode;
+                          if (code) {
+                            const meetingUrl = `${window.location.origin}/meet/${code}`;
+                            const shared = await shareMeetingToChats(token, code, {
+                              chatIds: [activeChat._id],
+                              meetingUrl
+                            });
+                            if (shared.messages?.[0]) {
+                              setMessages((prev) => [...prev, shared.messages[0]]);
+                              setChats((prev) =>
+                                prev.map((c) =>
+                                  c._id === activeChat._id ? { ...c, latestMessage: shared.messages[0] } : c
+                                )
+                              );
+                            }
+                            if (showToast) showToast('Meet invite sent to chat!', 'success');
+                          }
+                        } catch (err) {
+                          if (showToast) showToast(err.message || 'Failed to create Meet link', 'error');
+                        } finally {
+                          setStartingMeet(false);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition-colors disabled:opacity-40"
+                      title="Send Google Meet Invite Link"
+                    >
+                      <Video className="w-4.5 h-4.5" />
                     </button>
                   </div>
 

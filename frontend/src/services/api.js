@@ -927,3 +927,114 @@ export async function getPresenceStatus(token) {
   }
   return data;
 }
+
+export async function getIceServers(token) {
+  const response = await fetch(`${API_BASE_URL}/meetings/ice-servers`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to load ICE servers');
+  }
+  return data;
+}
+
+export async function createMeeting(token, payload = {}) {
+  const response = await fetch(`${API_BASE_URL}/meetings`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to create meeting');
+  }
+  return data;
+}
+
+export async function getMeetings(token) {
+  const response = await fetch(`${API_BASE_URL}/meetings`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch meetings');
+  }
+  return data;
+}
+
+export async function getMeetingByCode(token, code) {
+  const response = await fetch(`${API_BASE_URL}/meetings/${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Meeting not found');
+  }
+  return data;
+}
+
+export async function updateMeetingSettings(token, code, settings) {
+  const response = await fetch(`${API_BASE_URL}/meetings/${encodeURIComponent(code)}/settings`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(settings)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update meeting settings');
+  }
+  return data;
+}
+
+export async function endMeeting(token, code) {
+  const response = await fetch(`${API_BASE_URL}/meetings/${encodeURIComponent(code)}/end`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to end meeting');
+  }
+  return data;
+}
+
+export async function shareMeetingToChats(token, code, payload) {
+  const response = await fetch(`${API_BASE_URL}/meetings/${encodeURIComponent(code)}/share`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to share meeting link');
+  }
+  return data;
+}

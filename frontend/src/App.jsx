@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AdminDashboard from './pages/AdminDashboard';
 import UserDashboard from './pages/UserDashboard';
+import MeetRoom from './components/meet/MeetRoom';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 import CookiePolicyPage from './pages/CookiePolicyPage';
@@ -13,6 +14,27 @@ import { cookieStorage } from './services/storage';
 import { auth } from './config/firebase';
 import { onIdTokenChanged, signOut } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
+
+function MeetRouteGuard({ loading, currentUser }) {
+  const location = useLocation();
+  useEffect(() => {
+    if (!loading && !currentUser && location.pathname.startsWith('/meet/')) {
+      sessionStorage.setItem('mailchat_post_login_redirect', location.pathname);
+    }
+  }, [loading, currentUser, location.pathname]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+  if (!currentUser) {
+    return <Navigate to="/" replace />;
+  }
+  return <MeetRoom user={currentUser} />;
+}
 
 function App() {
   const navigate = useNavigate();
@@ -71,6 +93,13 @@ function App() {
     cookieStorage.setItem('mailchat_token', token);
     cookieStorage.setItem('mailchat_user', JSON.stringify(user));
     setCurrentUser(user);
+
+    const postLoginRedirect = sessionStorage.getItem('mailchat_post_login_redirect');
+    if (postLoginRedirect) {
+      sessionStorage.removeItem('mailchat_post_login_redirect');
+      navigate(postLoginRedirect, { replace: true });
+      return;
+    }
 
     if (user.role === 'admin') {
       navigate('/admin/users');
@@ -189,6 +218,11 @@ function App() {
         <Route path="/inbox" element={<Navigate to="/dashboard/inbox" replace />} />
         <Route path="/chats" element={<Navigate to="/dashboard/chats" replace />} />
         <Route path="/chat" element={<Navigate to="/dashboard/chats" replace />} />
+        <Route path="/meet" element={<Navigate to="/dashboard/meet" replace />} />
+        <Route
+          path="/meet/:code"
+          element={<MeetRouteGuard loading={loading} currentUser={currentUser} />}
+        />
         <Route path="/notifications" element={<Navigate to="/dashboard/notifications" replace />} />
         <Route
           path="/settings"

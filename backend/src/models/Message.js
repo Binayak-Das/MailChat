@@ -79,6 +79,13 @@ const messageSchema = new mongoose.Schema(
     isForwarded: {
       type: Boolean,
       default: false
+    },
+    meetingInvite: {
+      meetingCode: { type: String, trim: true },
+      title: { type: String, trim: true },
+      hostName: { type: String, trim: true },
+      meetingUrl: { type: String, trim: true },
+      scheduledAt: { type: Date }
     }
   },
   {
