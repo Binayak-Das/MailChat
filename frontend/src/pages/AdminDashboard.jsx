@@ -827,7 +827,7 @@ export default function AdminDashboard({ user = {}, onLogout, onUserUpdate }) {
               )}
             </button>
 
-            <button
+            {/* <button
               onClick={() => {
                 navigate("/admin/meet");
                 setMobileSidebarOpen(false);
@@ -849,7 +849,7 @@ export default function AdminDashboard({ user = {}, onLogout, onUserUpdate }) {
               >
                 HD
               </span>
-            </button>
+            </button> */}
 
             <button
               onClick={() => {

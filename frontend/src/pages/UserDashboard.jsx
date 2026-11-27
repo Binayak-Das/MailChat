@@ -657,8 +657,8 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
             <button
               onClick={() => { navigate('/dashboard/inbox'); setMobileSidebarOpen(false); }}
               className={`w-full px-3.5 py-3 rounded-xl text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${activeTab === 'inbox'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -676,8 +676,8 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
             <button
               onClick={() => { navigate('/dashboard/chats'); setMobileSidebarOpen(false); }}
               className={`w-full px-3.5 py-3 rounded-xl text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${activeTab === 'chats'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -692,11 +692,11 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
               )}
             </button>
 
-            <button
+            {/* <button
               onClick={() => { navigate('/dashboard/meet'); setMobileSidebarOpen(false); }}
               className={`w-full px-3.5 py-3 rounded-xl text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${activeTab === 'meet'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -707,13 +707,13 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
                 }`}>
                 HD
               </span>
-            </button>
+            </button> */}
 
             <button
               onClick={() => { navigate('/dashboard/notifications'); setMobileSidebarOpen(false); }}
               className={`w-full px-3.5 py-3 rounded-xl text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${activeTab === 'notifications'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -731,8 +731,8 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
             <button
               onClick={() => { navigate('/dashboard/settings'); setMobileSidebarOpen(false); }}
               className={`w-full px-3.5 py-3 rounded-xl text-sm font-semibold flex items-center justify-between transition-colors cursor-pointer ${activeTab === 'settings'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -856,8 +856,8 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
         </header>
 
         <div className={`flex-1 min-h-0 relative flex flex-col ${activeTab === 'inbox' || activeTab === 'chats'
-            ? 'p-2 sm:p-5 lg:p-6 overflow-hidden'
-            : 'p-3 sm:p-6 lg:p-8 overflow-y-auto'
+          ? 'p-2 sm:p-5 lg:p-6 overflow-hidden'
+          : 'p-3 sm:p-6 lg:p-8 overflow-y-auto'
           }`}>
           {activeTab === 'inbox' && (
             <MailModule
@@ -917,17 +917,17 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
                     <div
                       key={n.id || n._id}
                       className={`p-4 sm:p-5 rounded-2xl border transition-colors flex items-start gap-4 w-full ${n.unread
-                          ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/60'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                        ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/60'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
                         }`}
                     >
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${n.type === 'email'
-                          ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400'
-                          : n.type === 'group'
-                            ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400'
-                            : n.type === 'report'
-                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400'
+                        : n.type === 'group'
+                          ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400'
+                          : n.type === 'report'
+                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}>
                         {n.type === 'email' ? <Mail className="w-5 h-5" /> : n.type === 'group' ? <Users className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
                       </div>
@@ -1008,11 +1008,10 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
 
               <div className="p-5 sm:p-6 lg:p-7 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs w-full flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    user.twoFactorEnabled
-                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                  }`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${user.twoFactorEnabled
+                    ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}>
                     <ShieldCheck className="w-5 h-5" />
                   </div>
                   <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
@@ -1025,15 +1024,13 @@ export default function UserDashboard({ user = {}, onLogout, onUserUpdate }) {
                   role="switch"
                   aria-checked={Boolean(user.twoFactorEnabled)}
                   onClick={handleToggle2fa}
-                  className={`relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    user.twoFactorEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
+                  className={`relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${user.twoFactorEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
                 >
                   <span
                     aria-hidden="true"
-                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                      user.twoFactorEnabled ? 'translate-x-6' : 'translate-x-0'
-                    }`}
+                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${user.twoFactorEnabled ? 'translate-x-6' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
