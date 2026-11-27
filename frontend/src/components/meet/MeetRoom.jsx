@@ -518,16 +518,20 @@ export default function MeetRoom({ user }) {
     peerConnectionsRef.current.set(targetSocketId, pc);
 
     const activeStream = screenStreamRef.current || localStreamRef.current;
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach((track) => {
+    const audioTracks = localStreamRef.current?.getAudioTracks() || [];
+    if (audioTracks.length > 0) {
+      audioTracks.forEach((track) => {
         pc.addTrack(track, localStreamRef.current);
       });
+    } else {
+      pc.addTransceiver('audio', { direction: 'recvonly' });
     }
-    if (activeStream) {
-      const videoTrack = activeStream.getVideoTracks()[0];
-      if (videoTrack) {
-        pc.addTrack(videoTrack, activeStream);
-      }
+
+    const videoTrack = activeStream?.getVideoTracks()?.[0];
+    if (videoTrack) {
+      pc.addTrack(videoTrack, activeStream);
+    } else {
+      pc.addTransceiver('video', { direction: 'sendrecv' });
     }
 
     applyVideoBitrateCap(pc, screenStreamRef.current ? 1500000 : 600000);
@@ -925,17 +929,31 @@ export default function MeetRoom({ user }) {
     }
   };
 
+  const getVideoSender = (pc) => {
+    const byTrack = pc.getSenders().find((s) => s.track?.kind === 'video');
+    if (byTrack) return byTrack;
+    const transceiver = pc
+      .getTransceivers()
+      .find((t) => t.sender && t.receiver?.track?.kind === 'video');
+    return transceiver?.sender || null;
+  };
+
   // Toggle Screen Share
   const stopScreenShare = useCallback(() => {
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
     }
-    const camTrack = localStreamRef.current?.getVideoTracks()[0];
+    const camTrack = localStreamRef.current?.getVideoTracks()[0] || null;
     peerConnectionsRef.current.forEach((pc) => {
-      const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
-      if (sender && camTrack) {
-        sender.replaceTrack(camTrack).then(() => applyVideoBitrateCap(pc, 600000)).catch(() => {});
+      const sender = getVideoSender(pc);
+      if (sender) {
+        sender
+          .replaceTrack(camTrack)
+          .then(() => {
+            if (camTrack) applyVideoBitrateCap(pc, 600000);
+          })
+          .catch(() => {});
       }
     });
     setIsScreenSharing(false);
@@ -953,21 +971,58 @@ export default function MeetRoom({ user }) {
       showToast('Screen sharing is disabled by the host.', 'error');
       return;
     }
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getDisplayMedia !== 'function'
+    ) {
+      showToast(
+        'Screen sharing is not supported on this mobile browser. Please use a desktop browser to present.',
+        'error'
+      );
+      return;
+    }
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' },
+        video: {
+          cursor: 'always',
+          frameRate: { ideal: 24, max: 30 }
+        },
         audio: false
       });
       const screenTrack = displayStream.getVideoTracks()[0];
+      if (!screenTrack) {
+        showToast('No screen video track was selected.', 'error');
+        return;
+      }
       screenStreamRef.current = displayStream;
 
-      peerConnectionsRef.current.forEach((pc) => {
-        const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+      peerConnectionsRef.current.forEach((pc, targetSocketId) => {
+        const sender = getVideoSender(pc);
         if (sender) {
-          sender.replaceTrack(screenTrack).then(() => applyVideoBitrateCap(pc, 1500000)).catch(() => {});
+          sender
+            .replaceTrack(screenTrack)
+            .then(() => applyVideoBitrateCap(pc, 1500000))
+            .catch(() => {});
         } else {
           pc.addTrack(screenTrack, displayStream);
           applyVideoBitrateCap(pc, 1500000);
+          makingOfferRef.current.set(targetSocketId, true);
+          pc.createOffer()
+            .then((offer) => pc.setLocalDescription(offer))
+            .then(() => {
+              if (socketRef.current) {
+                socketRef.current.emit('meet:signal', {
+                  toSocketId: targetSocketId,
+                  signal: pc.localDescription,
+                  type: 'offer'
+                });
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              makingOfferRef.current.set(targetSocketId, false);
+            });
         }
       });
 
@@ -979,8 +1034,12 @@ export default function MeetRoom({ user }) {
       if (socketRef.current) {
         socketRef.current.emit('meet:media-state', { meetingCode, isScreenSharing: true });
       }
-    } catch {
-      // User cancelled screen share
+    } catch (err) {
+      if (err?.name === 'NotAllowedError') {
+        showToast('Screen share permission was denied or cancelled.', 'info');
+      } else if (err?.name !== 'AbortError') {
+        showToast('Screen sharing failed on this device/browser.', 'error');
+      }
     }
   };
 
